@@ -1,0 +1,56 @@
+{
+  "name": "initx-plugin-starter",
+  "type": "module",
+  "version": "0.0.17",
+  "packageManager": "pnpm@12.10.1",
+  "description": "initx plugin starter template",
+  "author": "imba97",
+  "license": "MIT",
+  "homepage": "https://github.com/initx-collective/initx-plugin-starter#readme",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:initx-collective/initx-plugin-starter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/initx-collective/initx-plugin-starter/issues"
+  },
+  "keywords": [
+    "initx",
+    "initx-plugin"
+  ],
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "stub": "unbuild --stub",
+    "build": "unbuild",
+    "release": "bumpp",
+    "lint": "eslint --cache",
+    "prepare": "simple-git-hooks"
+  },
+  "peerDependencies": {
+    "@initx-plugin/core": "*",
+    "@initx-plugin/utils": "*"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^9.5.1",
+    "@initx-plugin/core": "^0.4.3",
+    "@initx-plugin/utils": "^0.4.3",
+    "@types/node": "^26.6.4",
+    "bumpp": "^12.3.0",
+    "eslint": "^10.12.0",
+    "nano-staged": "^1.0.2",
+    "simple-git-hooks": "^2.14.0",
+    "typescript": "6.0.3",
+    "unbuild": "^3.6.1"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm nano-staged"
+  },
+  "nano-staged": {
+    "*": "eslint --cache --fix"
+  }
+}
