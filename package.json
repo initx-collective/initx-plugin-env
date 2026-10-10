@@ -1,22 +1,26 @@
 {
-  "name": "initx-plugin-starter",
+  "name": "@initx-plugin/env",
   "type": "module",
-  "version": "0.0.17",
+  "version": "0.1.0",
   "packageManager": "pnpm@12.10.1",
-  "description": "initx plugin starter template",
+  "description": "initx plugin to manage env vars and secrets from one private GitHub repo",
   "author": "imba97",
   "license": "MIT",
-  "homepage": "https://github.com/initx-collective/initx-plugin-starter#readme",
+  "homepage": "https://github.com/initx-collective/initx-plugin-env#readme",
   "repository": {
     "type": "git",
-    "url": "git@github.com:initx-collective/initx-plugin-starter.git"
+    "url": "git@github.com:initx-collective/initx-plugin-env.git"
   },
   "bugs": {
-    "url": "https://github.com/initx-collective/initx-plugin-starter/issues"
+    "url": "https://github.com/initx-collective/initx-plugin-env/issues"
   },
   "keywords": [
     "initx",
-    "initx-plugin"
+    "initx-plugin",
+    "env",
+    "dotenv",
+    "secrets",
+    "github-actions"
   ],
   "main": "dist/index.mjs",
   "module": "dist/index.mjs",
@@ -29,11 +33,17 @@
     "build": "unbuild",
     "release": "bumpp",
     "lint": "eslint --cache",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "prepare": "simple-git-hooks"
   },
   "peerDependencies": {
     "@initx-plugin/core": "*",
     "@initx-plugin/utils": "*"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.8.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
@@ -45,7 +55,8 @@
     "nano-staged": "^1.0.2",
     "simple-git-hooks": "^2.14.0",
     "typescript": "6.0.3",
-    "unbuild": "^3.6.1"
+    "unbuild": "^3.6.1",
+    "vitest": "^5.0.3"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm nano-staged"
