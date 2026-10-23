@@ -10,7 +10,7 @@
 ## 1. 一句话定位
 
 `initx` 插件：一个私有仓库当 vault，里面一个 JSON 一个 store；`env pull` 拉到本地 `.env`，
-`env setup` 注入当前 job，`env apply` 写进某个仓库的 Actions secrets。
+`env setup` 注入当前 job，`env run <store> -- <command>` 直接注入子进程，`env apply` 写进某个仓库的 Actions secrets。
 
 **刻意不做的那一半**：CI → 本地。GitHub Actions secret 的值**只写不读**
 （官方 schema 只有 `name` / `created_at` / `updated_at`），所以 vault 永远是真相源，
@@ -18,7 +18,7 @@ CI 永远是单向投影。这不是偷懒，是物理限制 —— 任何工具
 
 ---
 
-## 2. 命令面（6 个）
+## 2. 命令面
 
 | 命令 | 方向 | 说明 |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ CI 永远是单向投影。这不是偷懒，是物理限制 —— 任何工具
 | `env set <store> K=V ...` | 本地 → 仓库（单键） | store 名**就是文件名** → `stores/<store>.json` |
 | `env push <store>` | 本地 → 仓库（批量） | 从 `.env` 反向更新 store，`--prune` / `--force` |
 | `env setup [store]` | 仓库 → **当前环境** | CI 写 `$GITHUB_ENV` + `::add-mask::`；本地打到 stdout |
+| `env run <store> -- <command> [...args]` | 仓库 → **子进程** | 原值注入，继承 stdio/cwd，传递退出状态与中断；不落秘密文件 |
 | `env apply <store> --repo o/r` | 仓库 → **Actions secrets** | REST + libsodium sealed box，串行写入 |
 
 `apply` 是这个插件存在的主要理由：dotenvx / sops / 1Password / Doppler / Infisical / Vault
@@ -87,11 +88,11 @@ CI 永远是单向投影。这不是偷懒，是物理限制 —— 任何工具
 
 | 期 | 内容 |
 | --- | --- |
-| **v1（当前）** | 上表 6 个命令 + `env-config`；明文 JSON；仓库级 secrets；`.env` 更新式合并 |
+| **v1（当前）** | 上表命令 + `env-config`；明文 JSON；仓库级 secrets；`.env` 更新式合并；`env run` 与 CI 配置环境变量（[设计](env-run-design.md)、[实现与验证](env-run-implementation.md)） |
 | v2 | 加密（dotenvx 或 sops+age）+ `rotate`（批量重加密并重推） |
 | v2 | `apply --to variables`（Actions variables 的 value **可读** → 这部分能真正做到双向 + 内容级 diff） |
 | v2 | `env diff` / `env status`（名称集合 + `updated_at` 做漂移检测；variables 上做内容级） |
-| v3 | `env guard`（.env 是否被 gitignore、解密密钥是否被 git 跟踪）、`env run -- cmd`、共享变量 `ref`、系统 keychain、环境级 / 组织级 scope |
+| v3 | `env guard`（.env 是否被 gitignore、解密密钥是否被 git 跟踪）、共享变量 `ref`、系统 keychain、环境级 / 组织级 scope |
 
 ---
 

@@ -182,10 +182,13 @@ function printHelp(): void {
 
   setup                      交互式配置（repo / token / branch / path）
   set <key> <value>          设置单项，key 取 repo | token | branch | path
-  get <key>                  查看单项（token 会脱敏）
-  list                       查看全部配置（token 会脱敏）
+  get <key>                  查看持久化单项（token 会脱敏）
+  list                       查看全部持久化配置（token 会脱敏）
   rm <key>                   清除单项
-  status [--offline]         查看配置 + 连通性检查
+  status [--offline]         查看实际生效配置 + 连通性检查
+
+解析优先级：显式 override > INITX_ENV_REPO / INITX_ENV_BRANCH / INITX_ENV_PATH > 持久化配置 > 默认值。
+Token：--token > INITX_ENV_TOKEN > GH_TOKEN > GITHUB_TOKEN > 持久化配置。
 
 示例：
   npx initx env-config set repo imba97/env-vault

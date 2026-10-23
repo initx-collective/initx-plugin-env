@@ -72,7 +72,8 @@ export function resolveConfig(
   store: EnvPluginStore,
   overrides: EnvConfigOverrides = {}
 ): ResolvedEnvConfig {
-  const repo = overrides.repo || store.repo || ''
+  const env = overrides.env ?? process.env
+  const repo = overrides.repo || env.INITX_ENV_REPO || store.repo || ''
   const { token, source } = resolveToken(store, overrides)
 
   if (!repo) {
@@ -94,8 +95,8 @@ export function resolveConfig(
   return {
     repo,
     token,
-    branch: overrides.branch || store.branch || DEFAULT_BRANCH,
-    path: overrides.path || store.path || DEFAULT_PATH,
+    branch: overrides.branch || env.INITX_ENV_BRANCH || store.branch || DEFAULT_BRANCH,
+    path: overrides.path || env.INITX_ENV_PATH || store.path || DEFAULT_PATH,
     tokenSource: source
   }
 }

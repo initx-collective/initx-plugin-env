@@ -5,9 +5,10 @@ import { createCliOptions } from './cli-options'
 import { handleEnv } from './commands/env'
 import { handleEnvApply } from './commands/env-apply'
 import { handleEnvConfig, printConfigHelp } from './commands/env-config'
+import { handleEnvRun } from './commands/env-run'
 import { DEFAULT_BRANCH, DEFAULT_PATH } from './config'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'help']
+const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run', 'help']
 const CONFIG_ACTIONS = ['setup', 'set', 'get', 'list', 'ls', 'rm', 'remove', 'status', 'help']
 
 export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
@@ -23,7 +24,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   rules: InitxMatcherRules = [
     {
       matching: 'env',
-      description: 'Env vars from a private repo: env list | pull | set | push | setup | apply',
+      description: 'Env vars from a private repo: env list | pull | set | push | setup | apply | run',
       // matchinitx 的字符串匹配是**精确相等**，所以这里必须把子命令列全；
       // 带 undefined 是为了让裸 `npx initx env`（什么都不带）也能进来打帮助。
       optional: [undefined, ...ENV_ACTIONS]
@@ -57,7 +58,13 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
       return
     }
 
-    if (!rest.length || rest[0] === 'help' || options.boolean('help')) {
+    // Help is read only from parsed prefix options, never from the raw -- tail.
+    if (rest[0] === 'run' && !options.boolean('help') && !options.boolean('h')) {
+      await handleEnvRun({ store, options }, rest.slice(1))
+      return
+    }
+
+    if (!rest.length || rest[0] === 'help' || options.boolean('help') || options.boolean('h')) {
       printEnvHelp()
       return
     }
@@ -95,6 +102,8 @@ function printEnvHelp(): void {
                               --only A,B         只写这几个
                               --dry-run          只列出将写入的名字
                               --skip-invalid     跳过名字不合法的变量（默认中止）
+  run <store> -- cmd [args]   直接注入子进程，继承 stdio / cwd，传递退出状态
+                              --token <pat>      临时凭据（CI 推荐 INITX_ENV_TOKEN）
 
   配置 vault 仓库用：npx initx env-config --help
 

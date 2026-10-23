@@ -18,7 +18,7 @@ describe('插件规则', () => {
 
     expect(rule).toBeDefined()
 
-    for (const action of ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply'])
+    for (const action of ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run'])
       expect(rule?.optional).toContain(action)
 
     // 裸 `npx initx env` 也要能进来打帮助

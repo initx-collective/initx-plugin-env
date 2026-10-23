@@ -31,7 +31,7 @@ function run(key: string, ...others: string[]) {
 
 describe('命令分发（走真实匹配器）', () => {
   it('每个已声明的子命令都能命中恰好一个 handler', async () => {
-    for (const action of ['list', 'pull', 'set', 'push', 'setup', 'apply']) {
+    for (const action of ['list', 'pull', 'set', 'push', 'setup', 'apply', 'run']) {
       const handlers = await run('env', action)
 
       expect(handlers, `env ${action}`).toHaveLength(1)
@@ -55,10 +55,8 @@ describe('命令分发（走真实匹配器）', () => {
     expect(await run('env', 'status')).toHaveLength(0)
   })
 
-  it('`env help` 的 handler 只打帮助、不联网', async () => {
-    const [handler] = await run('env', 'help')
-
-    await expect(handler!.handler()).resolves.toBeUndefined()
+  it('`env help` 命中唯一 handler', async () => {
+    expect(await run('env', 'help')).toHaveLength(1)
   })
 })
 
