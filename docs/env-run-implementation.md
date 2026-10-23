@@ -51,7 +51,7 @@
 - Windows 的 SIGINT/SIGTERM 不是可捕获的 POSIX 信号。独立外层进程通过 IPC 触发父进程的真实信号处理器，再验证真实直接子进程终止、130/143 退出与监听器清理；这不等于验证了交互式控制台 Ctrl+C。
 - 可忽略信号的 5 秒计时、重复信号与 SIGKILL 清理逻辑有跨平台模拟进程测试。
 - 本机无已安装的 WSL Linux 发行版或 Docker 运行时，未实际执行 Linux 验证。POSIX 的真实 EACCES、忽略信号后 5 秒强杀、子进程自行被信号终止共 3 项测试保留在测试集中，在 Windows 明确跳过；Linux 上还会实测信号转发与同信号退出。
-- 已添加 `.github/workflows/test.yml` 的 ubuntu/windows 矩阵，但本次未推送或触发远程 CI，不能将配置视为 Linux 实测通过。
+- 已添加 `.github/workflows/test.yaml` 的 ubuntu/windows 矩阵，但本次未推送或触发远程 CI，不能将配置视为 Linux 实测通过。
 - 仅管理直接子进程。Windows `.cmd` 的后代及主动脱离进程组的后台进程不保证整体终止。
 
 Linux 实测及 Windows 交互 Ctrl+C 仍需在对应运行环境验证；README 如实说明这些限制。
