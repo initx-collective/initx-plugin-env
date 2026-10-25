@@ -2,10 +2,12 @@ import type { CliOptions } from '../cli-options'
 import type { EnvPluginStore } from '../config'
 import { Buffer } from 'node:buffer'
 import { logger } from '@initx-plugin/utils'
-import { putSecret } from '../actions-secrets'
+import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
-import { GitHubContentsClient } from '../github'
+import { createStorageAdapter } from '../storage/factory'
+import { validateStorageRepo } from '../storage/path'
 import { readStore } from '../store'
+import { createGitHubActionsTarget } from '../targets/github-actions'
 import { normalizeStoreName, validateSecretName } from '../types'
 
 /**
@@ -38,8 +40,9 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
 
   // 注意：这里的 `--repo` 是**写入目标**仓库，不是 vault 仓库，
   // 所以不把它传给 resolveConfig。
-  const config = resolveConfig(ctx.store, { token: ctx.options.string('token') })
-  const client = new GitHubContentsClient(config.repo, config.token, config.branch)
+  const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
+  const client = createStorageAdapter(config)
+  const destination = createGitHubActionsTarget(config, ctx.options.string('target-token'))
   const ref = await readStore(client, config.path, name)
 
   if (!ref) {
@@ -52,6 +55,7 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   if (!targetRepo) {
     throw new Error('要指定写入目标：--repo <owner/repo>，或在 store 里写 targets.secrets')
   }
+  validateStorageRepo('github', targetRepo)
 
   const targetEnv = ctx.options.string('env') ?? target?.env ?? null
   const only = ctx.options.string('only')?.split(',').map(item => item.trim()).filter(Boolean)
@@ -105,7 +109,7 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   // 串行：并发 PUT 中途失败既没有原子性，也不好汇总（`gh secret set -f` 就是并发）
   for (const [key, value] of writable) {
     try {
-      const result = await putSecret(targetRepo, config.token, key, value, { env: targetEnv })
+      const result = await destination.write(targetRepo, key, value, targetEnv)
       logger.success(`${key}: ${result === 'created' ? '新建' : '更新'}`)
     }
     catch (error) {

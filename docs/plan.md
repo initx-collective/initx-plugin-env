@@ -1,5 +1,12 @@
 # 方案：@initx-plugin/env
 
+> 2026-10-25 更新：下文保留最初 GitHub 版本的历史设计。
+> 当前存储边界已扩展为 GitHub/GitLab StorageAdapter，版本字段为不透明 `version`；
+> GitHub Actions 仍是唯一 apply 目标，来源与目标凭据独立。
+> `.initx-env.json`、凭据隔离及 GitLab CE 15.9.4 的实现与验收状态以
+> [存储适配器实现记录](gitlab-storage-implementation.md) 和 README 为准。
+> GitHub Secrets 的只写不读限制只适用于该目标，不代表所有 CI 平台都不能读取变量。
+
 > 把「本地 `.env` / CI secrets」的唯一真相源放在**一个私有 GitHub 仓库**里，
 > 插件负责两个投影：**拉到本地** 和 **写进 CI**。
 >

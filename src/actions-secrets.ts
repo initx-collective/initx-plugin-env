@@ -1,5 +1,6 @@
 import { sealSecret } from './crypto/sealed-box'
 import { githubFetch } from './github'
+import { responseJson } from './storage/http'
 
 /**
  * 把变量写进 GitHub Actions 的 secrets（REST API v2）。
@@ -39,7 +40,7 @@ export async function getPublicKey(
   env?: string | null
 ): Promise<{ keyId: string, key: string }> {
   const res = await githubFetch(`${secretsBase(repo, env)}/public-key`, token)
-  const data = await res.json() as { key_id?: string, key?: string }
+  const data = await responseJson<{ key_id?: string, key?: string }>(res)
 
   if (!data.key_id || !data.key)
     throw new Error(`拿不到 ${repo} 的公钥（返回体里没有 key_id/key）`)

@@ -1,12 +1,13 @@
 import type { EnvCommandContext } from './env'
 import process from 'node:process'
+import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
-import { GitHubContentsClient } from '../github'
+import { createStorageAdapter } from '../storage/factory'
 import { readStore } from '../store'
 import { normalizeStoreName } from '../types'
 import { applyRunResult, runProcess } from '../utils/run-process'
 
-const USAGE = '用法：initx env run <store> [--token <token>] -- <command> [...args]'
+const USAGE = '用法：initx env run <store> [--config <file>] [--token <token>] -- <command> [...args]'
 
 /** Read the raw cac tail; CliOptions.string() would join and corrupt it. */
 export function parseRunArgs(args: string[], tail: unknown): { name: string, command: string, args: string[] } {
@@ -57,17 +58,20 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
   let stage = '参数'
   try {
     const parsed = parseRunArgs(args, ctx.options.raw['--'])
-    const allowed = new Set(['--', 'token'])
+    const allowed = new Set(['--', 'token', 'config'])
     if (Object.keys(ctx.options.raw).some(key => !allowed.has(key)))
-      throw new Error('run 只支持 --token；子进程参数必须放在 -- 后')
+      throw new Error('run 只支持 --token / --config；子进程参数必须放在 -- 后')
     const token = ctx.options.raw.token
     if (token !== undefined && typeof token !== 'string' && typeof token !== 'number')
       throw new Error('--token 需要单个值')
+    const configFile = ctx.options.raw.config
+    if (configFile !== undefined && (typeof configFile !== 'string' || !configFile))
+      throw new Error('--config 需要单个文件路径')
 
     stage = '配置'
-    const config = resolveConfig(ctx.store, { token: ctx.options.string('token') })
+    const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
     stage = '读取 store'
-    const client = new GitHubContentsClient(config.repo, config.token, config.branch)
+    const client = createStorageAdapter(config)
     const ref = await readStore(client, config.path, parsed.name)
     if (!ref)
       throw new Error('store 不存在')

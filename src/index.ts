@@ -31,7 +31,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
     },
     {
       matching: 'env-config',
-      description: 'Configure the vault repo (repo / token / branch / path) and check connectivity',
+      description: 'Configure GitHub/GitLab vault storage and check connectivity',
       optional: [undefined, ...CONFIG_ACTIONS]
     }
   ]
@@ -98,12 +98,18 @@ function printEnvHelp(): void {
                               GitHub Actions 里写 $GITHUB_ENV（后续 step 可见）并自动脱敏
                               本地则打到 stdout（--stdout 强制；--json 输出 JSON）
   apply <store> --repo o/r    把 store 写进某个仓库的 Actions secrets
+                              --target-token <pat>  独立 GitHub 目标凭据
                               --env <环境名>     写环境级 secret
                               --only A,B         只写这几个
                               --dry-run          只列出将写入的名字
                               --skip-invalid     跳过名字不合法的变量（默认中止）
   run <store> -- cmd [args]   直接注入子进程，继承 stdio / cwd，传递退出状态
                               --token <pat>      临时凭据（CI 推荐 INITX_ENV_TOKEN）
+
+  全部存储命令支持 --config <file>（相对调用者 cwd；默认只读 cwd 的 .initx-env.json）。
+  run 的 --config / --token 放在 -- 前；之后的全部参数原样透传子进程。
+  支持 GitHub / GitLab vault；apply 的 --repo 始终是 GitHub Actions 目标。
+  跨平台 apply 必须设置 --target-token 或 INITX_ENV_TARGET_TOKEN。
 
   配置 vault 仓库用：npx initx env-config --help
 

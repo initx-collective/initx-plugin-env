@@ -1,11 +1,14 @@
 import type { CliOptions } from '../cli-options'
 import type { EnvPluginStore } from '../config'
+import type { StorageAdapter } from '../storage/types'
 import type { StoreRef } from '../store'
 import { readdir } from 'node:fs/promises'
 import process from 'node:process'
 import { inquirer, logger } from '@initx-plugin/utils'
+import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
-import { GitHubContentsClient, isConflictError } from '../github'
+import { isConflictError } from '../storage/errors'
+import { createStorageAdapter } from '../storage/factory'
 import { applyVars, listStores, readStore, writeStore } from '../store'
 import { createEmptyStore, isValidEnvKey, normalizeStoreName } from '../types'
 import { diffEnv, mergeEnv, parseEnv, readEnvFileIfExists, writeEnvFileWithBackup } from '../utils/envfile'
@@ -53,9 +56,9 @@ export async function handleEnv(ctx: EnvCommandContext, args: string[]): Promise
 }
 
 function createClient(ctx: EnvCommandContext, extra: { repo?: string } = {}) {
-  const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), repo: extra.repo })
+  const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options), repo: extra.repo })
 
-  return { config, client: new GitHubContentsClient(config.repo, config.token, config.branch) }
+  return { config, client: createStorageAdapter(config) }
 }
 
 async function runList(ctx: EnvCommandContext): Promise<void> {
@@ -75,7 +78,7 @@ async function runList(ctx: EnvCommandContext): Promise<void> {
 
 /** 没给名字就列出来让用户选（只有一个时直接用） */
 async function pickStoreName(
-  client: GitHubContentsClient,
+  client: StorageAdapter,
   basePath: string,
   name?: string
 ): Promise<string> {
@@ -97,7 +100,7 @@ async function pickStoreName(
 }
 
 async function requireStore(
-  client: GitHubContentsClient,
+  client: StorageAdapter,
   basePath: string,
   name: string
 ): Promise<StoreRef> {
@@ -216,7 +219,7 @@ function parsePairs(pairs: string[]): Record<string, string> {
     const index = pair.indexOf('=')
 
     if (index <= 0)
-      throw new Error(`参数要写成 KEY=value 形式："${pair}"`)
+      throw new Error('参数要写成 KEY=value 形式')
 
     const key = pair.slice(0, index).trim()
     const value = pair.slice(index + 1)
@@ -257,7 +260,7 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
     name,
     store,
     `env: set ${Object.keys(updates).join(', ')} in ${name}`,
-    existing?.sha
+    existing?.version
   )
 
   logger.success(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}`)
@@ -308,7 +311,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const message = `env: push ${name} from ${from}`
 
   try {
-    await writeStore(client, config.path, name, store, message, existing?.sha)
+    await writeStore(client, config.path, name, store, message, existing?.version)
   }
   catch (error) {
     if (!isConflictError(error) || !ctx.options.boolean('force'))
@@ -316,7 +319,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
 
     const latest = await requireStore(client, config.path, name)
     logger.warn('远端已更新，--force：以本地文件为准重新写入')
-    await writeStore(client, config.path, name, store, message, latest.sha)
+    await writeStore(client, config.path, name, store, message, latest.version)
   }
 
   logger.success(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}`)

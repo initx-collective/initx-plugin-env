@@ -1,6 +1,7 @@
-import type { GitHubContentsClient } from './github'
+import type { StorageAdapter } from './storage/types'
 import type { StoreFile } from './types'
-import { assertSafePath, decodeContent } from './github'
+import { requireCapability } from './storage/factory'
+import { assertSafePath } from './storage/path'
 import { createEmptyStore, normalizeStoreName, STORE_SCHEMA_VERSION, storeFileSchema } from './types'
 
 /**
@@ -8,13 +9,13 @@ import { createEmptyStore, normalizeStoreName, STORE_SCHEMA_VERSION, storeFileSc
  *
  * 刻意不做任何本地缓存 —— initx-plugin-cp 的缓存是"缓存优先、永不校验"，
  * 对普通文本只是拿到旧值，对**密钥**则是"你以为换了、其实还在用旧的"，
- * 而且它的缓存文件里存的是解码后的明文。这里每次现拉，一次 Contents API 而已。
+ * 而且它的缓存文件里存的是解码后的明文。这里每次通过适配器现拉，不保存 secret 缓存。
  */
 
 export interface StoreRef {
   name: string
   path: string
-  sha: string
+  version: string
   store: StoreFile
 }
 
@@ -57,23 +58,25 @@ export function serializeStore(store: StoreFile): string {
 }
 
 /** 列 `<path>/` 下的 store 名（去掉 `.json`），按字母序 */
-export async function listStores(client: GitHubContentsClient, basePath: string): Promise<string[]> {
+export async function listStores(client: StorageAdapter, basePath: string): Promise<string[]> {
+  requireCapability(client, 'list')
   const base = (basePath || '').trim().replace(/^\/+|\/+$/g, '')
-  const entries = await client.listDir(base)
+  const entries = await client.list(base)
 
   return entries
-    .filter(entry => entry.type === 'file' && entry.name.toLowerCase().endsWith('.json'))
+    .filter(entry => entry.kind === 'file' && entry.name.toLowerCase().endsWith('.json'))
     .map(entry => entry.name.replace(/\.json$/i, ''))
     .sort((a, b) => a.localeCompare(b))
 }
 
 export async function readStore(
-  client: GitHubContentsClient,
+  client: StorageAdapter,
   basePath: string,
   name: string
 ): Promise<StoreRef | null> {
   const path = storeFilePath(basePath, name)
-  const file = await client.getFile(path)
+  requireCapability(client, 'read')
+  const file = await client.read(path)
 
   if (!file)
     return null
@@ -83,30 +86,34 @@ export async function readStore(
   return {
     name: normalized,
     path,
-    sha: file.sha,
-    store: parseStore(decodeContent(file), normalized)
+    version: file.version,
+    store: parseStore(file.content, normalized)
   }
 }
 
 export async function writeStore(
-  client: GitHubContentsClient,
+  client: StorageAdapter,
   basePath: string,
   name: string,
   store: StoreFile,
   message: string,
-  sha?: string
+  version?: string
 ): Promise<void> {
-  await client.putFile(storeFilePath(basePath, name), serializeStore(store), message, sha)
+  requireCapability(client, 'write')
+  requireCapability(client, 'conditionalWrite')
+  await client.write(storeFilePath(basePath, name), serializeStore(store), { message, condition: version === undefined ? { kind: 'create' } : { kind: 'update', expectedVersion: version } })
 }
 
 export async function deleteStore(
-  client: GitHubContentsClient,
+  client: StorageAdapter,
   basePath: string,
   name: string,
-  sha: string,
+  version: string,
   message: string
 ): Promise<void> {
-  await client.deleteFile(storeFilePath(basePath, name), sha, message)
+  requireCapability(client, 'delete')
+  requireCapability(client, 'conditionalWrite')
+  await client.remove(storeFilePath(basePath, name), { expectedVersion: version, message })
 }
 
 /**

@@ -1,25 +1,19 @@
+import type { StorageLocation, StorageType } from './storage/types'
 import process from 'node:process'
-
-/**
- * 插件配置的解析：vault 仓库地址 + 访问凭据。
- *
- * 配置本身存在 initx 的 store 里（`~/.initx/stores/@initx-plugin/env/store.json`，
- * 由 `InitxPlugin` 的 `defaultStore` 机制自动落盘）。**Token 是明文存的** ——
- * 和 initx-plugin-cp 一样，这点会在写入时明确告警。
- *
- * 所有取值都遵循同一个优先级：**命令行 flag > 环境变量 > store 里的配置**。
- * 环境变量这条在 CI 里特别有用：不用把 PAT 落盘，直接给进程就行。
- */
+import { readProjectConfig } from './project-config'
+import { assertSafePath, DEFAULT_API_URLS, normalizeApiBaseUrl, validateStorageRepo } from './storage/path'
 
 export const DEFAULT_BRANCH = 'main'
 export const DEFAULT_PATH = 'stores'
 
-/** 插件自己的持久化配置（`src/index.ts` 的 defaultStore 就是它） */
+/** Legacy flat fields remain GitHub-only; new local locations and credentials are scoped. */
 export interface EnvPluginStore {
   repo?: string
   token?: string
   branch?: string
   path?: string
+  storage?: Partial<StorageLocation>
+  credentials?: Record<string, string>
 }
 
 export interface EnvConfigOverrides {
@@ -27,95 +21,115 @@ export interface EnvConfigOverrides {
   token?: string
   branch?: string
   path?: string
+  type?: StorageType
+  apiBaseUrl?: string
+  config?: string
+  cwd?: string
   env?: Record<string, string | undefined>
 }
 
-export interface EnvPluginConfig {
-  repo: string
+export interface EnvPluginConfig extends StorageLocation {
   token: string
-  branch: string
-  path: string
 }
-
 export type TokenSource = 'flag' | 'INITX_ENV_TOKEN' | 'GH_TOKEN' | 'GITHUB_TOKEN' | 'config' | 'none'
-
 export interface ResolvedEnvConfig extends EnvPluginConfig {
   tokenSource: TokenSource
+  configSource: string
+  sources: Record<'type' | 'apiBaseUrl' | 'repo' | 'branch' | 'path', string>
 }
 
-/** 按优先级找 token，返回它来自哪里 —— 报错和 `status` 都要用这个来源信息 */
-const TOKEN_ENV_KEYS = ['INITX_ENV_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'] as const
+export function credentialKey(type: StorageType, apiBaseUrl: string): string {
+  return `${type}:${normalizeApiBaseUrl(apiBaseUrl)}`
+}
 
-export function resolveToken(
-  store: EnvPluginStore,
-  overrides: EnvConfigOverrides = {}
-): { token: string, source: TokenSource } {
+export function localIdentity(store: EnvPluginStore): { type: StorageType, apiBaseUrl: string } {
+  const type = store.storage?.type || 'github'
+  if (type !== 'github' && type !== 'gitlab')
+    throw new Error('本地 storage.type 必须是 github 或 gitlab')
+  return { type, apiBaseUrl: normalizeApiBaseUrl(store.storage?.apiBaseUrl || DEFAULT_API_URLS[type]) }
+}
+
+function resolveLocation(store: EnvPluginStore, overrides: EnvConfigOverrides) {
   const env = overrides.env ?? process.env
+  const project = readProjectConfig(overrides.config, overrides.cwd)
+  const local = localIdentity(store)
+  const rawType = overrides.type || env.INITX_ENV_TYPE || project?.storage.type || local.type
+  if (rawType !== 'github' && rawType !== 'gitlab')
+    throw new Error('storage.type 必须是 github 或 gitlab')
+  const type: StorageType = rawType
+  const projectMatchesType = project?.storage.type === type
+  const base = overrides.apiBaseUrl || env.INITX_ENV_API_BASE_URL
+    || (projectMatchesType ? project.storage.apiBaseUrl : undefined)
+    || (local.type === type ? local.apiBaseUrl : DEFAULT_API_URLS[type])
+  const apiBaseUrl = normalizeApiBaseUrl(base)
+  const localMatches = local.type === type && local.apiBaseUrl === apiBaseUrl
+  const projectMatches = projectMatchesType && project.storage.apiBaseUrl === apiBaseUrl
+  const localFields = localMatches ? (store.storage || store) : {}
+  const fields = projectMatches ? project.storage : undefined
+  const sources: ResolvedEnvConfig['sources'] = {
+    type: overrides.type ? 'override' : env.INITX_ENV_TYPE ? 'INITX_ENV_TYPE' : project ? 'project' : 'local/default',
+    apiBaseUrl: overrides.apiBaseUrl ? 'override' : env.INITX_ENV_API_BASE_URL ? 'INITX_ENV_API_BASE_URL' : projectMatches ? 'project' : localMatches ? 'local/default' : 'default',
+    repo: '',
+    branch: '',
+    path: ''
+  }
+  function field(key: 'repo' | 'branch' | 'path', fallback: string): string {
+    const envKey = `INITX_ENV_${key.toUpperCase()}`
+    const candidates = [
+      [overrides[key] || undefined, 'override'],
+      [env[envKey] || undefined, envKey],
+      [fields?.[key], 'project'],
+      [localFields[key] || undefined, 'local'],
+      [fallback, 'default']
+    ] as const
+    const selected = candidates.find(([value]) => value !== undefined)!
+    sources[key] = selected[1]
+    return selected[0]!
+  }
+  return { type, apiBaseUrl, repo: field('repo', ''), branch: field('branch', DEFAULT_BRANCH), path: field('path', DEFAULT_PATH), sources, configSource: project?.file || 'local/env/default' }
+}
 
+function tokenFor(store: EnvPluginStore, overrides: EnvConfigOverrides, identity: Pick<StorageLocation, 'type' | 'apiBaseUrl'>): { token: string, source: TokenSource } {
+  const env = overrides.env ?? process.env
   if (overrides.token)
     return { token: overrides.token, source: 'flag' }
-
-  for (const key of TOKEN_ENV_KEYS) {
-    const value = env[key]
-
-    if (value)
-      return { token: value, source: key }
+  if (env.INITX_ENV_TOKEN)
+    return { token: env.INITX_ENV_TOKEN, source: 'INITX_ENV_TOKEN' }
+  const legacy = identity.type === 'github' && identity.apiBaseUrl === DEFAULT_API_URLS.github
+  if (legacy) {
+    for (const key of ['GH_TOKEN', 'GITHUB_TOKEN'] as const) {
+      if (env[key])
+        return { token: env[key], source: key }
+    }
   }
-
-  if (store.token)
+  const scoped = store.credentials?.[credentialKey(identity.type, identity.apiBaseUrl)]
+  if (scoped)
+    return { token: scoped, source: 'config' }
+  if (legacy && store.token)
     return { token: store.token, source: 'config' }
-
   return { token: '', source: 'none' }
 }
 
-export function resolveConfig(
-  store: EnvPluginStore,
-  overrides: EnvConfigOverrides = {}
-): ResolvedEnvConfig {
-  const env = overrides.env ?? process.env
-  const repo = overrides.repo || env.INITX_ENV_REPO || store.repo || ''
-  const { token, source } = resolveToken(store, overrides)
-
-  if (!repo) {
-    throw new Error('还没配 vault 仓库，先跑：npx initx env-config set repo <owner/repo>')
-  }
-
-  if (!/^[^/\s]+\/[^/\s]+$/.test(repo))
-    throw new Error(`仓库要写成 owner/repo 形式，当前是 "${repo}"`)
-
-  if (!token) {
-    throw new Error(
-      '没有可用的 GitHub token。三选一：\n'
-      + '  1) npx initx env-config set token <pat>\n'
-      + '  2) 设置环境变量 INITX_ENV_TOKEN（或 GH_TOKEN / GITHUB_TOKEN）\n'
-      + '  3) 任何命令都支持 --token <pat> 临时传入'
-    )
-  }
-
-  return {
-    repo,
-    token,
-    branch: overrides.branch || env.INITX_ENV_BRANCH || store.branch || DEFAULT_BRANCH,
-    path: overrides.path || env.INITX_ENV_PATH || store.path || DEFAULT_PATH,
-    tokenSource: source
-  }
+export function resolveToken(store: EnvPluginStore, overrides: EnvConfigOverrides = {}): { token: string, source: TokenSource } {
+  return tokenFor(store, overrides, resolveLocation(store, overrides))
 }
 
-/**
- * 输出用的脱敏。**任何时候都不要把 token 原样打出来** ——
- * initx-plugin-cp 的 `get token` 就是明文打印的，反面教材。
- */
+export function resolveConfig(store: EnvPluginStore, overrides: EnvConfigOverrides = {}): ResolvedEnvConfig {
+  const location = resolveLocation(store, overrides)
+  if (!location.repo)
+    throw new Error('还没配 vault 仓库，请配置 .initx-env.json 或 env-config set repo <owner/repo>')
+  validateStorageRepo(location.type, location.repo)
+  assertSafePath(location.path, true)
+  const { token, source } = tokenFor(store, overrides, location)
+  if (!token)
+    throw new Error('没有可用的当前后端 token，请设置 INITX_ENV_TOKEN、--token 或绑定当前 API 地址的本地凭据')
+  return { ...location, token, tokenSource: source }
+}
+
 export function maskSecret(value: string): string {
   return value ? '***' : '(未设置)'
 }
 
-/** 只用于给用户确认"是哪一个 token"，不泄露内容 */
 export function hintSecret(value: string): string {
-  if (!value)
-    return '(未设置)'
-
-  if (value.length <= 12)
-    return `***（${value.length} 字符）`
-
-  return `${value.slice(0, 4)}…${value.slice(-4)}（${value.length} 字符）`
+  return maskSecret(value)
 }

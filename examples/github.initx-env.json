@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "storage": {
+    "type": "github",
+    "apiBaseUrl": "https://api.github.com",
+    "repo": "example-owner/env-vault",
+    "branch": "main",
+    "path": "stores"
+  }
+}

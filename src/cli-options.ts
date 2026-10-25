@@ -58,3 +58,12 @@ export function createCliOptions(
     }
   }
 }
+
+export function configFileOption(options: CliOptions): string | undefined {
+  if (!options.has('config'))
+    return undefined
+  const value = options.raw.config
+  if (typeof value !== 'string' || !value.trim())
+    throw new Error('--config 需要单个文件路径')
+  return value
+}

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "storage": {
+    "type": "gitlab",
+    "apiBaseUrl": "https://gitlab.example.com/api/v4",
+    "repo": "example-group/subgroup/env-vault",
+    "branch": "main",
+    "path": "stores"
+  }
+}
