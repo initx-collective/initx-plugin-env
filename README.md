@@ -106,6 +106,14 @@ Legacy flat config remains GitHub config; its token is accepted only on the defa
 | `initx env run <store> -- <command> [...args]` | Inject a store directly into one child process and return its exit status |
 | `initx env apply <store> --repo o/r` | Write a store into a repo's GitHub Actions secrets |
 
+Command failures print only the error message to stderr and exit with code 1, without a stack
+trace or minified source dump. A failed connectivity check in `env-config status` also exits
+with code 1. `env run` continues to forward the child's own exit status, signals and output.
+Terminal messages use the existing utils color builders: errors are red, successful changes
+green, warnings/modified keys yellow, and configuration values/store names blue. Message-body
+colors are disabled when redirected or when `NO_COLOR`/`FORCE_COLOR=0` is set; `FORCE_COLOR=1`
+enables them explicitly. JSON, exported variable values and child output are not colorized.
+
 ```bash
 # write / update a store
 initx env set mail-peon-publish EXTENSION_ID=abc CHROME_REFRESH_TOKEN=1//0g...

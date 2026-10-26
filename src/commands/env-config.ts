@@ -8,6 +8,7 @@ import { ProjectConfigError } from '../project-config'
 import { createStorageAdapter } from '../storage/factory'
 import { assertSafePath, DEFAULT_API_URLS, normalizeApiBaseUrl, validateStorageRepo } from '../storage/path'
 import { listStores } from '../store'
+import { colorText } from '../utils/terminal'
 
 /**
  * `npx initx env-config ...` —— vault 仓库本身的配置。
@@ -86,8 +87,8 @@ async function runSetup(store: EnvPluginStore): Promise<void> {
   const path = await inquirer.input('store 目录', { default: persistedValue(store, 'path') || DEFAULT_PATH })
   runSet(store, ['path', path || DEFAULT_PATH])
 
-  logger.success('本地 vault 配置已保存')
-  logger.warn(TOKEN_WARNING)
+  logger.success(colorText('本地 vault 配置已保存', 'green'))
+  logger.warn(colorText(TOKEN_WARNING, 'yellow'))
 }
 
 function runSet(store: EnvPluginStore, args: string[]): void {
@@ -128,12 +129,12 @@ function runSet(store: EnvPluginStore, args: string[]): void {
   }
 
   if (key === 'token') {
-    logger.success(`token 已保存：${hintSecret(value)}`)
-    logger.warn(TOKEN_WARNING)
+    logger.success(colorText(`token 已保存：${hintSecret(value)}`, 'green'))
+    logger.warn(colorText(TOKEN_WARNING, 'yellow'))
     return
   }
 
-  logger.success(`${key} = ${value}`)
+  logger.success(`${key} = ${colorText(value, 'green')}`)
 }
 
 function runGet(store: EnvPluginStore, args: string[]): void {
@@ -143,12 +144,12 @@ function runGet(store: EnvPluginStore, args: string[]): void {
     throw new Error(`用法：npx initx env-config get <${CONFIG_KEYS.join('|')}>`)
 
   // token 永远不打明文
-  logger.info(`${key} = ${displayValue(store, key)}`)
+  logger.info(`${key} = ${colorText(displayValue(store, key), 'blue')}`)
 }
 
 function runList(store: EnvPluginStore): void {
   for (const key of CONFIG_KEYS)
-    logger.info(`${key}: ${displayValue(store, key)}`)
+    logger.info(`${key}: ${colorText(displayValue(store, key), 'blue')}`)
 }
 
 function runRemove(store: EnvPluginStore, args: string[]): void {
@@ -173,7 +174,7 @@ function runRemove(store: EnvPluginStore, args: string[]): void {
   else {
     delete store[key]
   }
-  logger.success(`已清除 ${key}`)
+  logger.success(colorText(`已清除 ${key}`, 'green'))
 }
 
 async function runStatus(store: EnvPluginStore, options: CliOptions): Promise<void> {
@@ -186,33 +187,27 @@ async function runStatus(store: EnvPluginStore, options: CliOptions): Promise<vo
     if (error instanceof ProjectConfigError)
       throw error
     // Preserve the original status behavior for incomplete local configuration.
-    logger.warn((error as Error).message)
+    logger.warn(colorText((error as Error).message, 'yellow'))
     return
   }
 
-  logger.info(`存储后端: ${config.type}`)
-  logger.info(`API 地址: ${config.apiBaseUrl}`)
-  logger.info(`配置来源: ${config.configSource}`)
-  logger.info(`字段来源: ${JSON.stringify(config.sources)}`)
-  logger.info(`vault 仓库: ${config.repo}`)
-  logger.info(`分支: ${config.branch}`)
-  logger.info(`store 目录: ${config.path}`)
-  logger.info(`token: ${hintSecret(config.token)}（来自 ${config.tokenSource}）`)
+  logger.info(`存储后端: ${colorText(config.type, 'blue')}`)
+  logger.info(`API 地址: ${colorText(config.apiBaseUrl, 'blue')}`)
+  logger.info(`配置来源: ${colorText(config.configSource, 'blue')}`)
+  logger.info(`字段来源: ${colorText(JSON.stringify(config.sources), 'gray')}`)
+  logger.info(`vault 仓库: ${colorText(config.repo, 'blue')}`)
+  logger.info(`分支: ${colorText(config.branch, 'blue')}`)
+  logger.info(`store 目录: ${colorText(config.path, 'blue')}`)
+  logger.info(`token: ${colorText(hintSecret(config.token), 'yellow')}（来自 ${config.tokenSource}）`)
 
   if (options.boolean('offline')) {
-    logger.info('（--offline：跳过连通性检查）')
+    logger.info(colorText('（--offline：跳过连通性检查）', 'gray'))
     return
   }
 
-  try {
-    const client = createStorageAdapter(config)
-    const stores = await listStores(client, config.path)
-    logger.success(`连通正常，${config.path}/ 下有 ${stores.length} 个 store`)
-  }
-  catch (error) {
-    logger.error(`连不上或没权限：${(error as Error).message}`)
-    logger.warn('检查：仓库、ref、当前后端 token 的读取权限与 API 地址')
-  }
+  const client = createStorageAdapter(config)
+  const stores = await listStores(client, config.path)
+  logger.success(colorText(`连通正常，${config.path}/ 下有 ${stores.length} 个 store`, 'green'))
 }
 
 function persistedValue(store: EnvPluginStore, key: ConfigKey): string | undefined {

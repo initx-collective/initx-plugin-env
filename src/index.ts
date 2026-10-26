@@ -7,6 +7,7 @@ import { handleEnvApply } from './commands/env-apply'
 import { handleEnvConfig, printConfigHelp } from './commands/env-config'
 import { handleEnvRun } from './commands/env-run'
 import { DEFAULT_BRANCH, DEFAULT_PATH } from './config'
+import { reportCommandError } from './utils/terminal'
 
 const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run', 'help']
 const CONFIG_ACTIONS = ['setup', 'set', 'get', 'list', 'ls', 'rm', 'remove', 'status', 'help']
@@ -37,6 +38,18 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   ]
 
   async handle(
+    ctx: InitxContext<EnvPluginStore>,
+    ...args: (string | undefined)[]
+  ): Promise<void> {
+    try {
+      await this.dispatch(ctx, ...args)
+    }
+    catch (error) {
+      reportCommandError(error)
+    }
+  }
+
+  private async dispatch(
     ctx: InitxContext<EnvPluginStore>,
     ...args: (string | undefined)[]
   ): Promise<void> {

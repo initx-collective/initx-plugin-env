@@ -13,6 +13,7 @@ import { applyVars, listStores, readStore, writeStore } from '../store'
 import { createEmptyStore, isValidEnvKey, normalizeStoreName } from '../types'
 import { diffEnv, mergeEnv, parseEnv, readEnvFileIfExists, writeEnvFileWithBackup } from '../utils/envfile'
 import { injectEnv, isGitHubActions } from '../utils/gh-env'
+import { colorText } from '../utils/terminal'
 
 /**
  * `npx initx env ...` 的读侧命令：list / pull / setup，以及写侧：set / push。
@@ -66,14 +67,14 @@ async function runList(ctx: EnvCommandContext): Promise<void> {
   const names = await listStores(client, config.path)
 
   if (!names.length) {
-    logger.warn(`${config.repo} 的 ${config.path}/ 下还没有 store`)
+    logger.warn(colorText(`${config.repo} 的 ${config.path}/ 下还没有 store`, 'yellow'))
     logger.info('建一个：npx initx env set <名字> KEY=value')
     return
   }
 
-  logger.info(`${config.repo} · ${config.path}/ 共 ${names.length} 个 store：`)
+  logger.info(`${colorText(config.repo, 'blue')} · ${colorText(`${config.path}/`, 'blue')} 共 ${names.length} 个 store：`)
   for (const name of names)
-    logger.info(`  - ${name}`)
+    logger.info(`  - ${colorText(name, 'blue')}`)
 }
 
 /** 没给名字就列出来让用户选（只有一个时直接用） */
@@ -175,7 +176,7 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const keys = Object.keys(vars)
 
   if (!keys.length) {
-    logger.warn(`store "${name}" 里没有任何变量`)
+    logger.warn(colorText(`store "${name}" 里没有任何变量`, 'yellow'))
     return
   }
 
@@ -187,28 +188,28 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
     const result = mergeEnv(original, vars)
 
     if (!result.changed) {
-      logger.info(`${target}: 已经是最新的（${keys.length} 个变量，无需改动）`)
+      logger.info(`${colorText(target, 'blue')}: 已经是最新的（${keys.length} 个变量，无需改动）`)
       continue
     }
 
     if (dryRun) {
       const diff = diffEnv(original, vars)
-      logger.info(`${target}（--dry-run，未写入）：`)
+      logger.info(`${colorText(target, 'blue')}（${colorText('--dry-run，未写入', 'yellow')}）：`)
       for (const key of diff.added)
-        logger.info(`  + ${key}`)
+        logger.info(colorText(`  + ${key}`, 'green'))
       for (const key of diff.updated)
-        logger.info(`  ~ ${key}`)
+        logger.info(colorText(`  ~ ${key}`, 'yellow'))
       continue
     }
 
     const { backupPath } = await writeEnvFileWithBackup(target, result.content)
-    logger.success(`${target}: 新增 ${result.added.length} · 更新 ${result.updated.length} · 未变 ${result.unchanged.length}`)
+    logger.success(colorText(`${target}: 新增 ${result.added.length} · 更新 ${result.updated.length} · 未变 ${result.unchanged.length}`, 'green'))
 
     if (backupPath)
-      logger.info(`  旧文件备份在 ${backupPath}`)
+      logger.info(`  旧文件备份在 ${colorText(backupPath, 'blue')}`)
 
     if (result.duplicates.length)
-      logger.warn(`  注意：${result.duplicates.join(', ')} 在文件里出现多次，只更新了最后一行`)
+      logger.warn(colorText(`  注意：${result.duplicates.join(', ')} 在文件里出现多次，只更新了最后一行`, 'yellow'))
   }
 }
 
@@ -250,7 +251,7 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const change = applyVars(store, updates)
 
   if (!change.added.length && !change.updated.length) {
-    logger.info(`store "${name}" 无需改动（${change.unchanged.length} 个变量值相同）`)
+    logger.info(`store "${colorText(name, 'blue')}" 无需改动（${change.unchanged.length} 个变量值相同）`)
     return
   }
 
@@ -263,11 +264,11 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
     existing?.version
   )
 
-  logger.success(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}`)
+  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}`, 'green'))
   for (const key of change.added)
-    logger.info(`  + ${key}`)
+    logger.info(colorText(`  + ${key}`, 'green'))
   for (const key of change.updated)
-    logger.info(`  ~ ${key}`)
+    logger.info(colorText(`  ~ ${key}`, 'yellow'))
 }
 
 async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
@@ -304,7 +305,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   }
 
   if (!change.added.length && !change.updated.length && !removed.length) {
-    logger.info(`store "${name}" 无需改动（${from} 里的值都一样）`)
+    logger.info(`store "${colorText(name, 'blue')}" 无需改动（${colorText(from, 'blue')} 里的值都一样）`)
     return
   }
 
@@ -318,11 +319,11 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
       throw error
 
     const latest = await requireStore(client, config.path, name)
-    logger.warn('远端已更新，--force：以本地文件为准重新写入')
+    logger.warn(colorText('远端已更新，--force：以本地文件为准重新写入', 'yellow'))
     await writeStore(client, config.path, name, store, message, latest.version)
   }
 
-  logger.success(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}`)
+  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}`, 'green'))
 }
 
 async function pickDefaultEnvFile(): Promise<string> {
@@ -357,11 +358,11 @@ async function runSetup(ctx: EnvCommandContext, args: string[]): Promise<void> {
   })
 
   if (result.target === 'github_env') {
-    logger.success(`已注入本次 job 的后续步骤（${result.injected.length} 个变量，${result.masked.length} 个已脱敏）`)
+    logger.success(colorText(`已注入本次 job 的后续步骤（${result.injected.length} 个变量，${result.masked.length} 个已脱敏）`, 'green'))
     return
   }
 
   if (!isGitHubActions()) {
-    logger.warn('当前不在 GitHub Actions 里，变量打到 stdout（可以 eval 或重定向）')
+    logger.warn(colorText('当前不在 GitHub Actions 里，变量打到 stdout（可以 eval 或重定向）', 'yellow'))
   }
 }

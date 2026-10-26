@@ -6,6 +6,7 @@ import { createStorageAdapter } from '../storage/factory'
 import { readStore } from '../store'
 import { normalizeStoreName } from '../types'
 import { applyRunResult, runProcess } from '../utils/run-process'
+import { colorText } from '../utils/terminal'
 
 const USAGE = '用法：initx env run <store> [--config <file>] [--token <token>] -- <command> [...args]'
 
@@ -80,12 +81,12 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     stage = '启动子进程'
     const result = await runProcess(parsed.command, parsed.args, env)
     if (result.errorCode)
-      process.stderr.write(`env run: 启动失败（${result.errorCode}）\n`)
+      process.stderr.write(`${colorText(`env run: 启动失败（${result.errorCode}）`, 'red', 'stderr')}\n`)
     applyRunResult(result)
   }
   catch (error) {
     const detail = stage === '变量校验' || stage === '参数' ? `：${(error as Error).message}` : ''
-    process.stderr.write(`env run: ${stage}失败${detail}\n`)
+    process.stderr.write(`${colorText(`env run: ${stage}失败${detail}`, 'red', 'stderr')}\n`)
     process.exitCode = 1
   }
 }

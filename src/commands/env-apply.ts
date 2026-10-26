@@ -9,6 +9,7 @@ import { validateStorageRepo } from '../storage/path'
 import { readStore } from '../store'
 import { createGitHubActionsTarget } from '../targets/github-actions'
 import { normalizeStoreName, validateSecretName } from '../types'
+import { colorText } from '../utils/terminal'
 
 /**
  * `npx initx env apply <store>` —— 把 store 里的变量写进某个仓库的 Actions secrets。
@@ -81,28 +82,28 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   }
 
   if (problems.length) {
-    logger.error('这些变量不能写进 Actions secrets：')
+    logger.error(colorText('这些变量不能写进 Actions secrets：', 'red'))
     for (const problem of problems)
-      logger.error(`  ${problem}`)
+      logger.error(colorText(`  ${problem}`, 'red'))
 
     if (!ctx.options.boolean('skip-invalid')) {
       throw new Error(`有 ${problems.length} 个变量不合法，已中止（改名后用 --only 排除，或加 --skip-invalid 跳过）`)
     }
 
-    logger.warn('--skip-invalid：跳过这些变量')
+    logger.warn(colorText('--skip-invalid：跳过这些变量', 'yellow'))
   }
 
   const blocked = new Set(problems.map(problem => problem.split(' — ')[0]!))
   const writable = entries.filter(([key]) => !blocked.has(key))
 
   if (ctx.options.boolean('dry-run')) {
-    logger.info(`--dry-run：将写入 ${writable.length} 个 secret → ${targetRepo}${targetEnv ? `（环境 ${targetEnv}）` : '（仓库级）'}`)
+    logger.info(`${colorText('--dry-run', 'yellow')}：将写入 ${writable.length} 个 secret → ${colorText(targetRepo, 'blue')}${targetEnv ? `（环境 ${colorText(targetEnv, 'blue')}）` : '（仓库级）'}`)
     for (const [key] of writable)
-      logger.info(`  ${key}`)
+      logger.info(`  ${colorText(key, 'blue')}`)
     return
   }
 
-  logger.info(`写入 ${targetRepo}${targetEnv ? `（环境 ${targetEnv}）` : '（仓库级）'} …`)
+  logger.info(`写入 ${colorText(targetRepo, 'blue')}${targetEnv ? `（环境 ${colorText(targetEnv, 'blue')}）` : '（仓库级）'} …`)
 
   const failures: string[] = []
 
@@ -110,18 +111,18 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   for (const [key, value] of writable) {
     try {
       const result = await destination.write(targetRepo, key, value, targetEnv)
-      logger.success(`${key}: ${result === 'created' ? '新建' : '更新'}`)
+      logger.success(colorText(`${key}: ${result === 'created' ? '新建' : '更新'}`, 'green'))
     }
     catch (error) {
       failures.push(key)
-      logger.error(`${key}: 失败 — ${(error as Error).message}`)
+      logger.error(colorText(`${key}: 失败 — ${(error as Error).message}`, 'red'))
     }
   }
 
   if (failures.length)
     throw new Error(`${failures.length} 个 secret 写入失败：${failures.join(', ')}`)
 
-  logger.success(`完成：${writable.length} 个 secret → ${targetRepo}`)
+  logger.success(colorText(`完成：${writable.length} 个 secret → ${targetRepo}`, 'green'))
   if (targetEnv)
     logger.info(`环境级 secret 需要该 environment 已存在，且 job 引用它时才可用`)
 }

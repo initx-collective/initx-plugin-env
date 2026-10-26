@@ -9,7 +9,7 @@ import { handleEnvConfig } from '../commands/env-config'
 import { createHarness } from './run-harness'
 
 const { logger } = vi.hoisted(() => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn() } }))
-vi.mock('@initx-plugin/utils', () => ({ logger, inquirer: {} }))
+vi.mock('@initx-plugin/utils', async importOriginal => ({ ...await importOriginal<typeof import('@initx-plugin/utils')>(), logger, inquirer: {} }))
 
 let harness: Awaited<ReturnType<typeof createHarness>>
 let requests: { url: string, init?: RequestInit }[]

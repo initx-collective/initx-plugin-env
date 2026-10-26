@@ -9,7 +9,7 @@ import { readProjectConfig } from '../project-config'
 import { createHarness } from './run-harness'
 
 const { logger } = vi.hoisted(() => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn() } }))
-vi.mock('@initx-plugin/utils', () => ({ logger, inquirer: {} }))
+vi.mock('@initx-plugin/utils', async importOriginal => ({ ...await importOriginal<typeof import('@initx-plugin/utils')>(), logger, inquirer: {} }))
 
 let harness: Awaited<ReturnType<typeof createHarness>>
 const storage = { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'group/sub/vault', branch: 'production', path: 'config' }
