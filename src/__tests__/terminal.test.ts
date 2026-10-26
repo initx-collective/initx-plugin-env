@@ -1,4 +1,5 @@
 import process from 'node:process'
+import { logger } from '@initx-plugin/utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { colorText, reportCommandError } from '../utils/terminal'
 
@@ -29,10 +30,10 @@ describe('terminal formatting', () => {
 
   it('reports an unknown thrown value without inspecting or stringifying it', () => {
     vi.stubEnv('NO_COLOR', '1')
-    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => {})
     const toString = vi.fn(() => 'private token')
     reportCommandError({ secret: 'private token', toString })
-    expect(stderr).toHaveBeenCalledExactlyOnceWith('命令执行失败\n')
+    expect(error).toHaveBeenCalledExactlyOnceWith('命令执行失败')
     expect(toString).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
   })

@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import process from 'node:process'
+import { stripVTControlCharacters } from 'node:util'
 import { build } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, root, start, stop } from './run-harness'
@@ -62,7 +63,8 @@ describe('plugin command error boundary in a minified subprocess', () => {
       harness.env.INITX_TEST_KEY = 'env-config'
     const result = await execute(action === 'set' ? ['set', 'demo', 'A=dummy-local-value'] : [action, 'demo'], { targetToken: 'fake-target-token' })
     expect(result.code).toBe(1)
-    expect(result.stderr).toBe('没有权限，请检查 token 授权与分支保护（HTTP 403）\n')
+    expect(stripVTControlCharacters(result.stdout)).toContain(' ERROR  没有权限，请检查 token 授权与分支保护（HTTP 403）\n')
+    expect(result.stderr).toBe('')
     expect(result.stdout + result.stderr).not.toMatch(/file:\/\/\/|\bat \w|StorageError|Node\.js v|private-upstream-sentinel|dummy-local-value|fake-bootstrap-token/)
   })
 
@@ -70,22 +72,31 @@ describe('plugin command error boundary in a minified subprocess', () => {
     harness.env.INITX_TEST_HTTP_STATUS = '404'
     const result = await execute(['push', 'demo'])
     expect(result.code).toBe(1)
-    expect(result.stdout).toBe('')
-    expect(result.stderr).toBe('仓库或 ref 不存在，或当前 token 无权访问（HTTP 404）\n')
+    expect(stripVTControlCharacters(result.stdout)).toBe(' ERROR  仓库或 ref 不存在，或当前 token 无权访问（HTTP 404）\n')
+    expect(result.stderr).toBe('')
+  })
+
+  it.each(['debug', 'd'])('uses the context %s flag for sanitized storage diagnostics', async (flag) => {
+    const result = await execute(['push', 'demo'], { [flag]: true })
+    expect(result.code).toBe(1)
+    expect(stripVTControlCharacters(result.stdout)).toContain(' DEBUG  GitLab {"operation":"file-read","event":"request-failed","status":403}')
+    expect(result.stdout).not.toMatch(/fake-bootstrap-token|private-upstream-sentinel|dummy-local-value/)
+    expect(result.stderr).toBe('')
   })
 
   it('handles local validation errors at the same boundary', async () => {
     const result = await execute(['push'])
     expect(result.code).toBe(1)
-    expect(result.stderr).toMatch(/^用法：[^\n]+\n$/)
-    expect(result.stdout).toBe('')
+    expect(stripVTControlCharacters(result.stdout)).toMatch(/^ ERROR {2}用法：[^\n]+\n$/)
+    expect(result.stderr).toBe('')
   })
 
   it('colors the full error message red through the utils builder', async () => {
     harness.env.FORCE_COLOR = '1'
     const result = await execute(['push', 'demo'])
     expect(result.code).toBe(1)
-    expect(result.stderr).toBe('\x1B[31m没有权限，请检查 token 授权与分支保护（HTTP 403）\x1B[0m\n')
+    expect(result.stdout).toContain('\x1B[31m没有权限，请检查 token 授权与分支保护（HTTP 403）\x1B[0m\n')
+    expect(result.stderr).toBe('')
   })
 
   it('highlights status values blue and keeps token values masked', async () => {

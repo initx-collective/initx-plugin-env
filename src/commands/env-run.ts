@@ -1,5 +1,6 @@
 import type { EnvCommandContext } from './env'
 import process from 'node:process'
+import { logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
 import { createStorageAdapter } from '../storage/factory'
@@ -59,9 +60,9 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
   let stage = '参数'
   try {
     const parsed = parseRunArgs(args, ctx.options.raw['--'])
-    const allowed = new Set(['--', 'token', 'config'])
+    const allowed = new Set(['--', 'token', 'config', 'debug', 'd'])
     if (Object.keys(ctx.options.raw).some(key => !allowed.has(key)))
-      throw new Error('run 只支持 --token / --config；子进程参数必须放在 -- 后')
+      throw new Error('run 只支持 --token / --config 和全局 --debug / -d；子进程参数必须放在 -- 后')
     const token = ctx.options.raw.token
     if (token !== undefined && typeof token !== 'string' && typeof token !== 'number')
       throw new Error('--token 需要单个值')
@@ -72,7 +73,7 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     stage = '配置'
     const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
     stage = '读取 store'
-    const client = createStorageAdapter(config)
+    const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
     const ref = await readStore(client, config.path, parsed.name)
     if (!ref)
       throw new Error('store 不存在')
@@ -81,12 +82,12 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     stage = '启动子进程'
     const result = await runProcess(parsed.command, parsed.args, env)
     if (result.errorCode)
-      process.stderr.write(`${colorText(`env run: 启动失败（${result.errorCode}）`, 'red', 'stderr')}\n`)
+      logger.error(colorText(`env run: 启动失败（${result.errorCode}）`, 'red'))
     applyRunResult(result)
   }
   catch (error) {
     const detail = stage === '变量校验' || stage === '参数' ? `：${(error as Error).message}` : ''
-    process.stderr.write(`${colorText(`env run: ${stage}失败${detail}`, 'red', 'stderr')}\n`)
+    logger.error(colorText(`env run: ${stage}失败${detail}`, 'red'))
     process.exitCode = 1
   }
 }

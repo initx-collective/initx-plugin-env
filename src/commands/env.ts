@@ -59,7 +59,7 @@ export async function handleEnv(ctx: EnvCommandContext, args: string[]): Promise
 function createClient(ctx: EnvCommandContext, extra: { repo?: string } = {}) {
   const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options), repo: extra.repo })
 
-  return { config, client: createStorageAdapter(config) }
+  return { config, client: createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') }) }
 }
 
 async function runList(ctx: EnvCommandContext): Promise<void> {

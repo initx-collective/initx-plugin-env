@@ -1,6 +1,7 @@
 import type { InitxContext, InitxMatcherRules } from '@initx-plugin/core'
 import type { EnvPluginStore } from './config'
 import { InitxPlugin } from '@initx-plugin/core'
+import { logger } from '@initx-plugin/utils'
 import { createCliOptions } from './cli-options'
 import { handleEnv } from './commands/env'
 import { handleEnvApply } from './commands/env-apply'
@@ -59,6 +60,8 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
       ctx.cliOptions as Record<string, unknown>,
       ctx.optionsList
     )
+    // Local stub installs can load a different utils instance from the CLI.
+    logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info')
     const store = (ctx.store ?? {}) as EnvPluginStore
 
     if (ctx.key === 'env-config') {
@@ -94,8 +97,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
 }
 
 function printEnvHelp(): void {
-  // eslint-disable-next-line no-console
-  console.log(`
+  logger.info(`
 用法：npx initx env <命令>
 
   list                        列出 vault 仓库里所有 store

@@ -1,5 +1,5 @@
 import process from 'node:process'
-import { useColors } from '@initx-plugin/utils'
+import { logger, useColors } from '@initx-plugin/utils'
 
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray'
 
@@ -15,6 +15,6 @@ export function colorText(text: string, tone: Tone, stream: 'stdout' | 'stderr' 
 /** Catch at the plugin boundary so Node never prints the minified source or stack. */
 export function reportCommandError(error: unknown): void {
   const message = error instanceof Error && error.message ? error.message : '命令执行失败'
-  process.stderr.write(`${colorText(message, 'red', 'stderr')}\n`)
+  logger.error(colorText(message, 'red'))
   process.exitCode = 1
 }

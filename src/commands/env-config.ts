@@ -205,7 +205,7 @@ async function runStatus(store: EnvPluginStore, options: CliOptions): Promise<vo
     return
   }
 
-  const client = createStorageAdapter(config)
+  const client = createStorageAdapter({ ...config, debug: options.boolean('debug') || options.boolean('d') })
   const stores = await listStores(client, config.path)
   logger.success(colorText(`连通正常，${config.path}/ 下有 ${stores.length} 个 store`, 'green'))
 }
@@ -229,8 +229,7 @@ export function printConfigHelp(): void {
 }
 
 function printHelp(): void {
-  // eslint-disable-next-line no-console
-  console.log(`
+  logger.info(`
 用法：npx initx env-config <命令>
 
   setup                      交互式配置当前本地后端（repo / token / branch / path）

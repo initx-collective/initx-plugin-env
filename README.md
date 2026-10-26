@@ -106,7 +106,7 @@ Legacy flat config remains GitHub config; its token is accepted only on the defa
 | `initx env run <store> -- <command> [...args]` | Inject a store directly into one child process and return its exit status |
 | `initx env apply <store> --repo o/r` | Write a store into a repo's GitHub Actions secrets |
 
-Command failures print only the error message to stderr and exit with code 1, without a stack
+Command failures print only the error message through `logger.error` and exit with code 1, without a stack
 trace or minified source dump. A failed connectivity check in `env-config status` also exits
 with code 1. `env run` continues to forward the child's own exit status, signals and output.
 Terminal messages use the existing utils color builders: errors are red, successful changes
@@ -176,7 +176,7 @@ tests exercise the real direct-child termination and listener cleanup by trigger
 signal event over IPC; interactive console Ctrl+C still needs a manual console check.
 
 `run` writes no `.env`, `$GITHUB_ENV`, dotenv artifact or secret cache, and emits no GitHub masking
-protocol. Its own diagnostics go to stderr without values, tokens, complete response bodies or
+protocol. Its own diagnostics use the utils logger without values, tokens, complete response bodies or
 command argument lists. **Child output is inherited without masking**: a script can still print
 secrets. The parent environment, including inherited GitHub tokens, is retained. This is process
 injection for trusted scripts and stores, not an isolation sandbox or encrypted secret manager.
@@ -362,6 +362,35 @@ pnpm build
 pnpm lint
 pnpm typecheck
 ```
+
+To debug a GitLab request with an existing local initx installation, run `pnpm stub` and
+`ix plugin add .` in this plugin directory. This links the plugin, without installing the CLI
+in the project. Leave stub mode enabled while diagnosing; source changes then take effect directly.
+The switch comes from initx's context (`ctx.cliOptions.debug` or `ctx.cliOptions.d`). In the
+business project, repeat your original command with initx's existing global debug option:
+
+```powershell
+ix env push my-store --token <gitlab-token> --debug
+```
+
+Plugin debug messages use `logger.debug` and retain only empty-vault initialization, write results,
+failed requests, and permission summaries. Routine read requests, expected missing-file/ref responses,
+and successful project lookups are silent. No URLs, tokens, request/response
+bodies, commit messages or variable values are logged. For a branch-write permission failure,
+debug mode makes additional read-only project/branch/protection requests; failed diagnostics
+preserve the original error and never retry the write. `accessLevel: 30` means Developer and
+`40` means Maintainer. `allowedPushLevels` lists numeric levels from the exact-name protection
+rule, when readable. A missing/unreadable rule does not rule out wildcard or initial default-branch
+policies. For an empty project, creating the first branch is still subject to GitLab permissions.
+In GitLab CE 15.9.4, default-branch protection can apply before the first branch exists:
+`ProtectedBranch.protected?` treats an empty project with default-branch protection as protected.
+If a Developer token is denied on the first commit, use a Maintainer token with `api`, or have
+a project maintainer configure the intended initial-branch policy. A failed protection lookup
+(`403`) means the token cannot inspect the rule; it does not mean there is no protection.
+See the versioned [ProtectedBranch model](https://github.com/gitlabhq/gitlabhq/blob/v15.9.4/app/models/protected_branch.rb).
+All human-readable messages use the existing utils logger (which currently writes to stdout).
+Raw JSON, shell exports and GitHub Actions protocol lines remain data output without logger prefixes;
+the child's own stdout/stderr and exit status remain unchanged.
 
 `pnpm test` runs unit tests and isolated child-process fixtures with fake GitHub/GitLab responses and
 temporary directories. Tests use the existing core matcher and direct command handlers, without

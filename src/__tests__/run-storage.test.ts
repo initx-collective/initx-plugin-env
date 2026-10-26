@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import process from 'node:process'
+import { stripVTControlCharacters } from 'node:util'
 import { build } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, root, start, stop } from './run-harness'
@@ -30,6 +31,7 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
       contents: `
         import { appendFileSync } from 'node:fs';
         import { Buffer } from 'node:buffer';
+        import { logger } from '@initx-plugin/utils';
         import { createCliOptions } from './src/cli-options.ts';
         import { handleEnvRun } from './src/commands/env-run.ts';
         globalThis.fetch = async (url, init) => {
@@ -37,7 +39,9 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
           if (process.env.INITX_TEST_FETCH_ERROR) throw new Error('private-token secret-response');
           return Response.json({type:'file', sha:'github-version', last_commit_id:'gitlab-version', encoding:'base64', content:Buffer.from(JSON.stringify({schema:1, vars:JSON.parse(process.env.INITX_TEST_VARS)})).toString('base64')});
         };
-        await handleEnvRun({store:{}, options:createCliOptions(JSON.parse(process.env.INITX_TEST_OPTIONS))}, JSON.parse(process.env.INITX_TEST_ARGS));
+        const options = createCliOptions(JSON.parse(process.env.INITX_TEST_OPTIONS));
+        logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info');
+        await handleEnvRun({store:{}, options}, JSON.parse(process.env.INITX_TEST_ARGS));
       `
     },
     outfile: host,
@@ -109,8 +113,16 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     harness.env.INITX_TEST_FETCH_ERROR = '1'
     const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
     expect(result.code).toBe(1)
-    expect(result.stdout).toBe('')
-    expect(result.stderr).toBe('env run: 读取 store失败\n')
+    expect(stripVTControlCharacters(result.stdout)).toBe(' ERROR  env run: 读取 store失败\n')
+    expect(result.stderr).toBe('')
+  })
+
+  it('accepts the global debug prefix and preserves the child debug argument and exit status', async () => {
+    harness.env.INITX_TEST_VARS = '{}'
+    const result = await (await execute(type, { 'debug': true, '--': [process.execPath, '-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1))); process.exitCode=13', '--', '--debug'] })).done
+    expect(result.code).toBe(13)
+    expect(result.stdout).toBe('["--debug"]')
+    expect(result.stdout + result.stderr).not.toMatch(/fake-bootstrap-token|private-token/)
   })
 
   it('rejects extra prefix flags and malformed --config before reading', async () => {
@@ -118,8 +130,8 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     for (const prefix of [{ repo: 'forbidden/repo' }, { config: true }, { config: ['a', 'b'] }]) {
       const result = await (await execute(type, { ...prefix, '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
       expect(result.code).toBe(1)
-      expect(result.stdout).toBe('')
-      expect(result.stderr).toContain('参数失败')
+      expect(stripVTControlCharacters(result.stdout)).toContain(' ERROR  env run: 参数失败')
+      expect(result.stderr).toBe('')
     }
     expect(await readdir(harness.directory)).not.toContain('events.jsonl')
   })

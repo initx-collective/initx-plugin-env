@@ -5,7 +5,7 @@ import { GitLabStorageAdapter } from './gitlab'
 
 const adapters = { github: GitHubStorageAdapter, gitlab: GitLabStorageAdapter }
 
-export function createStorageAdapter(config: StorageLocation & { token: string }): StorageAdapter {
+export function createStorageAdapter(config: StorageLocation & { token: string, debug?: boolean }): StorageAdapter {
   const Adapter = adapters[config.type]
   if (!Adapter)
     throw new StorageError('unsupported')
