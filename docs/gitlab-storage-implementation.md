@@ -2,6 +2,28 @@
 
 日期：2026-10-25。实现依据为 `gitlab-storage-adapters-plan.md`，实际行为以源码与测试为准。
 
+## 2026-10-26：补回空仓库首次写入
+
+用户实测 GitLab 空 vault 时，Files 404 后的 commit/ref 预检将“尚无首个分支”当成了不可访问目标，
+导致首次 push 在提交前失败；同一预检也影响迁移后的 GitHub 适配器。这是本次修复的回归。
+
+- GitLab：commit/ref 404 后调用 `GET /projects/:id`，要求项目可访问且明确返回布尔值 `empty_repo: true`。
+- GitHub：仅识别已知的空仓库 409 文本；ref 404 时查询不指定 ref 的 commits 列表确认，不能把任意 404/409 当空仓库。
+- 已确认空仓库时 read 返回 null、list/status 显示零项，读取不创建 README、分支或提交。
+- 首次 push/set 直接使用 Files POST（GitLab）或 Contents PUT（GitHub）创建 store 和首个分支；
+  未配置 branch 时为 main，显式 branch 继续生效。不增加初始化专用的额外写操作。
+- 已初始化仓库的缺失 ref、无权访问、错误 metadata、首次写入权限错误继续失败；创建竞争仍按冲突处理。
+- 不创建远程项目本身，不修改实例或分支保护规则；初始默认分支权限仍由服务端决定。
+
+GitLab 15.9.4 依据：[project empty_repo 字段](https://github.com/gitlabhq/gitlabhq/blob/v15.9.4/lib/api/entities/project.rb)、
+[Files CreateService](https://github.com/gitlabhq/gitlabhq/blob/v15.9.4/app/services/files/create_service.rb)。
+新增两平台空 vault 生命周期、默认/自定义分支、并发首次创建、GitLab metadata 权限/类型、
+GitHub 409/缺失 ref 区分及 push/set/status 命令回归测试；真实实例首次提交仍待用户验证。
+
+本次本地检查：pnpm lint、pnpm typecheck、pnpm test、pnpm build 均通过；16 个测试文件通过，
+208 passed、3 skipped（POSIX 专属）。dist 已重建；未安装 initx CLI，package.json 与 lockfile 无变化，
+未访问真实 vault、发布或推送。
+
 ## 已实现
 
 - `src/storage/types.ts` 定义中立 StorageAdapter、capabilities、UTF-8 StorageObject 和不透明 version。
@@ -33,7 +55,8 @@ file_path 和 last_commit_id。该版本 Commits API 明确接受此字段，Mul
 - [v15.9.4 MultiService](https://github.com/gitlabhq/gitlabhq/blob/v15.9.4/app/services/files/multi_service.rb)
 
 另一个保守处理：Tree 请求前校验 commit/ref，避免旧版的 200 空数组把无效 ref 静默解释为空 vault；
-新式路径 404 也会重新核验目标。该额外 GET 要求只读 token 同时有 Commit、Files、Tree 的读取权限。
+新式路径 404 也会重新核验目标；空仓库例外按上方补充规则确认。该额外 GET 要求只读 token 同时有 Commit、Files、Tree 的读取权限，
+空 GitLab 仓库还需读取项目 metadata（read_api 覆盖）。
 GitHub 路径 404 同样通过 commit/ref 查询区分文件缺失与目标不可访问。
 
 GitLab 更新相同内容可能返回 400；仅当安全重读结果的版本和内容均符合请求，才视为目标已满足。
@@ -83,6 +106,8 @@ GitLab 更新相同内容可能返回 400；仅当安全重读结果的版本和
 2. 用 read_api 验证 Files、Tree、commit/ref 读取；同时验证跨 subgroup、中文/空格路径与带斜杠 ref。
 3. 用超过 100 条目录项验证分页；不存在目录应为空，不存在 ref/无权访问应失败。
 4. 用具备 api 与目标分支写权限的凭据验证创建、更新、无变化提交、创建竞争与陈旧版本更新拒绝。
+   另外验证空项目首次 push/set 创建 main 和 store；status/list 在首次写入前不创建提交，
+   初始默认分支保护不允许的角色应保持失败。
 5. **验证 Commits delete action 在该实例拒绝陈旧 last_commit_id，正常版本可删除**，随后清理临时数据。
 6. 验证受保护分支/只读 token 的错误分类与脱敏，检查反向代理重定向是否需要修正 API base。
 7. 在实际 Linux Runner 确认 env run 执行标记、退出码与信号行为；Windows 控制台 Ctrl+C 仍保留原手工验收项。

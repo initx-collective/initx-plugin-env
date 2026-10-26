@@ -33,13 +33,30 @@ export class GitHubStorageAdapter implements StorageAdapter {
   private async checkTarget(): Promise<void> {
     // A Contents 404 also hides inaccessible repositories and nonexistent refs.
     const response = await storageFetch(`${this.base}/commits/${encodeURIComponent(this.location.branch)}`, { headers: this.headers })
+    // The Contents and Commit endpoints can return 409 for an empty repository.
+    // Recognize only GitHub's known literal, never a generic conflict or 404.
+    if (await this.isEmptyRepository(response))
+      return
+    if (response.status === 404) {
+      const commits = await storageFetch(`${this.base}/commits?per_page=1`, { headers: this.headers })
+      if (await this.isEmptyRepository(commits))
+        return
+      requireOk(commits)
+    }
     requireOk(response)
+  }
+
+  private async isEmptyRepository(response: Response): Promise<boolean> {
+    if (response.status !== 409)
+      return false
+    const body = await responseJson<{ message?: unknown }>(response)
+    return body?.message === 'Git Repository is empty.'
   }
 
   async read(path: string): Promise<StorageObject | null> {
     assertSafePath(path)
     const response = await storageFetch(this.url(path), { headers: this.headers })
-    if (response.status === 404) {
+    if (response.status === 404 || await this.isEmptyRepository(response)) {
       await this.checkTarget()
       return null
     }
@@ -52,7 +69,7 @@ export class GitHubStorageAdapter implements StorageAdapter {
 
   async list(path: string): Promise<StorageEntry[]> {
     const response = await storageFetch(this.url(path), { headers: this.headers })
-    if (response.status === 404) {
+    if (response.status === 404 || await this.isEmptyRepository(response)) {
       await this.checkTarget()
       return []
     }

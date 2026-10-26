@@ -55,6 +55,42 @@ afterEach(async () => {
 const options = (extra: Record<string, unknown> = {}) => createCliOptions({ config: file, ...extra })
 
 describe('gitLab command regressions', () => {
+  it.each([
+    ['github', 'push'],
+    ['github', 'set'],
+    ['gitlab', 'push'],
+    ['gitlab', 'set']
+  ] as const)('%s %s initializes an empty vault on main without a README or separate branch mutation', async (type, action) => {
+    await writeFile(file, JSON.stringify({ schema: 1, storage: { type, repo: 'group/vault' } }))
+    const envFile = join(harness.directory, '.env')
+    await writeFile(envFile, 'A=fake-only\n')
+    let content: string | undefined
+    const writes: RequestInit[] = []
+    vi.stubGlobal('fetch', vi.fn(async (value, init = {}) => {
+      const url = new URL(value)
+      if (init.method) {
+        writes.push(init)
+        expect(url.pathname).toContain(type === 'github' ? '/contents/stores/demo.json' : '/repository/files/stores%2Fdemo.json')
+        expect(init.method).toBe(type === 'github' ? 'PUT' : 'POST')
+        const body = JSON.parse(init.body)
+        expect(body.branch).toBe('main')
+        content = Buffer.from(body.content, 'base64').toString('utf8')
+        return Response.json({}, { status: 201 })
+      }
+      if (url.pathname.includes('/commits/'))
+        return type === 'github' ? Response.json({ message: 'Git Repository is empty.' }, { status: 409 }) : new Response(null, { status: 404 })
+      if (url.pathname.endsWith('/projects/group%2Fvault'))
+        return Response.json({ empty_repo: true })
+      return new Response(null, { status: 404 })
+    }))
+    await handleEnvConfig({}, ['status'], options())
+    expect(logger.success.mock.calls.flat().join('\n')).toContain('0 个 store')
+    expect(writes).toEqual([])
+    await handleEnv({ store: {}, options: options({ from: envFile }) }, action === 'push' ? ['push', 'demo'] : ['set', 'demo', 'A=fake-only'])
+    expect(writes).toHaveLength(1)
+    expect(JSON.parse(content!)).toMatchObject({ schema: 1, vars: { A: 'fake-only' } })
+  })
+
   it('list and status go through the adapter factory', async () => {
     await handleEnv({ store: {}, options: options() }, ['list'])
     await handleEnvConfig({}, ['status'], options())

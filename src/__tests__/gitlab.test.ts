@@ -84,10 +84,10 @@ describe('gitLab API compatibility', () => {
   })
 
   it('does not interpret legacy empty tree for an invalid ref as an empty vault', async () => {
-    const fetch = vi.fn(async url => String(url).includes('/commits/') ? new Response('', { status: 404 }) : Response.json([]))
+    const fetch = vi.fn(async url => String(url).includes('/commits/') ? new Response('', { status: 404 }) : Response.json({ empty_repo: false }))
     vi.stubGlobal('fetch', fetch)
     await expect(createStorageAdapter(config).list('missing')).rejects.toMatchObject({ code: 'not-found' })
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('omits path for repository root and stops after an exact full page with no next header', async () => {

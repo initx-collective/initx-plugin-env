@@ -24,12 +24,14 @@ async function rejectLegacyPermission(response: Response): Promise<void> {
 /** Files/Tree/Commits APIs available in GitLab CE 15.9; no job-token or keyset features. */
 export class GitLabStorageAdapter implements StorageAdapter {
   readonly capabilities = { read: true, list: true, write: true, delete: true, conditionalWrite: true }
+  private readonly projectUrl: string
   private readonly base: string
   private readonly headers: Record<string, string>
 
   constructor(private readonly location: StorageLocation, token: string) {
     validateStorageRepo('gitlab', location.repo)
-    this.base = `${normalizeApiBaseUrl(location.apiBaseUrl)}/projects/${encodeURIComponent(location.repo)}/repository`
+    this.projectUrl = `${normalizeApiBaseUrl(location.apiBaseUrl)}/projects/${encodeURIComponent(location.repo)}`
+    this.base = `${this.projectUrl}/repository`
     this.headers = { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' }
   }
 
@@ -38,10 +40,22 @@ export class GitLabStorageAdapter implements StorageAdapter {
     return `${this.base}/files/${encodeURIComponent(path)}`
   }
 
-  private async checkTarget(): Promise<void> {
+  private async checkTarget(): Promise<boolean> {
     // Commit lookup accepts both branch names and refs and distinguishes a missing path from an inaccessible target.
     const response = await storageFetch(`${this.base}/commits/${encodeURIComponent(this.location.branch)}`, { headers: this.headers })
+    if (response.status === 404) {
+      // Empty projects have no ref yet. Verify project access and the explicit
+      // 15.9-compatible empty_repo flag before allowing a first Files POST.
+      const projectResponse = await storageFetch(this.projectUrl, { headers: this.headers })
+      requireOk(projectResponse)
+      const project = await responseJson<{ empty_repo: boolean }>(projectResponse)
+      if (!project || typeof project.empty_repo !== 'boolean')
+        throw new StorageError('validation')
+      if (project.empty_repo)
+        return false
+    }
     requireOk(response)
+    return true
   }
 
   async read(path: string): Promise<StorageObject | null> {
@@ -61,7 +75,8 @@ export class GitLabStorageAdapter implements StorageAdapter {
     assertSafePath(path, true)
     const result: StorageEntry[] = []
     // 15.9 may return 200 [] for an invalid ref as well as a missing directory.
-    await this.checkTarget()
+    if (!await this.checkTarget())
+      return result
     for (let page = 1; ; page++) {
       const query = new URLSearchParams({ ref: this.location.branch, per_page: '100', page: String(page), ...(path ? { path } : {}) })
       const response = await storageFetch(`${this.base}/tree?${query}`, { headers: this.headers })

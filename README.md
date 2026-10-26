@@ -54,6 +54,14 @@ or the full namespace, including multiple subgroups. `apiBaseUrl` means the API 
 `stores`; `"path": ""` explicitly selects repository root. For a GitHub vault, use `"type": "github"`
 and `"repo": "owner/vault"`. Examples are in [examples](examples/).
 
+The vault project/repository must already exist, but it can be empty. The first `env push <store>`
+or `env set <store> K=V` creates the configured branch (default `main`) and the store file in one
+commit, on both GitHub and GitLab. No README or manual branch creation is required. `list` and
+`env-config status` report zero stores for a confirmed empty vault without writing anything.
+An initialized vault with a missing configured branch still fails. The token must have permission
+to create the first commit; GitLab instance rules for the initial/default branch may require a
+Maintainer even when a Developer can write to other branches.
+
 All storage commands and `env-config status` accept `--config <file>`. Relative paths resolve
 against the caller's cwd. Without the flag, only cwd's `.initx-env.json` is checked; parents are
 never searched. An explicitly missing file, invalid JSON, unknown schema or unknown field fails
@@ -273,7 +281,8 @@ hints; concurrent remote-only changes can be replaced. Pull/review before force 
 
 GitLab uses Files GET/POST/PUT, a conditional Commits delete action, and Tree offset pagination
 (`per_page=100`). It supports full subgroups and numeric IDs, and does not require keyset pagination, newer Tree metadata or job-token
-features. Missing paths are empty only after validating repository/ref access. Tree accepts both
+features. Missing paths are empty only after validating repository/ref access or confirming an
+empty repository (GitLab project `empty_repo`, GitHub's explicit empty-repository response). Tree accepts both
 legacy 200 empty arrays and newer 404 responses. Directory listing is not recursive. Errors expose
 only a category, safe hint and HTTP status, never upstream response text or request URLs.
 
