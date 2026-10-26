@@ -25,6 +25,28 @@ export interface StoreVarsChange {
   unchanged: string[]
 }
 
+type StoreField = 'schema' | 'vars' | 'targets' | 'targets.envFiles' | 'targets.secrets' | 'root'
+
+/** A controlled diagnostic separate from detailed parser messages and user-supplied keys. */
+export class StoreReadError extends Error {
+  constructor(
+    public readonly reason: 'not-found' | 'invalid-json' | 'invalid-shape',
+    public readonly fields: StoreField[] = [],
+    message?: string
+  ) {
+    super(message || reason)
+    this.name = 'StoreReadError'
+  }
+
+  diagnostic(): string {
+    if (this.reason === 'not-found')
+      return 'store 文件不存在，请核对路径、名称与分支'
+    if (this.reason === 'invalid-json')
+      return 'store 文件不是合法 JSON'
+    return `store 结构不合法（字段：${this.fields.join('、') || 'root'}）`
+  }
+}
+
 export function storeFilePath(basePath: string, name: string): string {
   const normalized = normalizeStoreName(name)
   const base = (basePath || '').trim().replace(/^\/+|\/+$/g, '')
@@ -42,13 +64,20 @@ export function parseStore(content: string, name: string): StoreFile {
     json = JSON.parse(content)
   }
   catch {
-    throw new Error(`store "${name}" 不是合法 JSON`)
+    throw new StoreReadError('invalid-json', [], `store "${name}" 不是合法 JSON`)
   }
 
   const result = storeFileSchema.safeParse(json)
 
-  if (!result.success)
-    throw new Error(`store "${name}" 结构不合法：${result.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`)
+  if (!result.success) {
+    const fields = result.error.issues.map((issue): StoreField => {
+      const [field, child] = issue.path
+      if (field === 'targets' && (child === 'envFiles' || child === 'secrets'))
+        return `targets.${child}`
+      return field === 'schema' || field === 'vars' || field === 'targets' ? field : 'root'
+    })
+    throw new StoreReadError('invalid-shape', [...new Set(fields)], `store "${name}" 结构不合法：${result.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`)
+  }
 
   return result.data
 }

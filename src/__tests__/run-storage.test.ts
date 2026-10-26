@@ -37,7 +37,10 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
         globalThis.fetch = async (url, init) => {
           appendFileSync(process.env.INITX_TEST_EVENTS, JSON.stringify({url, redirect: init.redirect}) + '\\n');
           if (process.env.INITX_TEST_FETCH_ERROR) throw new Error('private-token secret-response');
-          return Response.json({type:'file', sha:'github-version', last_commit_id:'gitlab-version', encoding:'base64', content:Buffer.from(JSON.stringify({schema:1, vars:JSON.parse(process.env.INITX_TEST_VARS)})).toString('base64')});
+          if (process.env.INITX_TEST_HTTP_STATUS) return new Response('private-token secret-response', {status:Number(process.env.INITX_TEST_HTTP_STATUS)});
+          if (process.env.INITX_TEST_MISSING_STORE) return /repository\\/files\\/|\\/contents\\//.test(new URL(url).pathname) ? new Response(null, {status:404}) : Response.json({id:'head'});
+          const content = process.env.INITX_TEST_RAW_STORE ?? JSON.stringify({schema:1, vars:JSON.parse(process.env.INITX_TEST_VARS)});
+          return Response.json({type:'file', sha:'github-version', last_commit_id:'gitlab-version', encoding:'base64', content:Buffer.from(content).toString('base64')});
         };
         const options = createCliOptions(JSON.parse(process.env.INITX_TEST_OPTIONS));
         logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info');
@@ -113,7 +116,41 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     harness.env.INITX_TEST_FETCH_ERROR = '1'
     const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
     expect(result.code).toBe(1)
-    expect(stripVTControlCharacters(result.stdout)).toBe(' ERROR  env run: 读取 store失败\n')
+    expect(stripVTControlCharacters(result.stdout)).toContain('env run: 读取 store失败：网络请求失败或超时')
+    expect(stripVTControlCharacters(result.stdout)).toContain(`后端=${type}，配置来源=项目文件，凭据来源=INITX_ENV_TOKEN`)
+    expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run/)
+    expect(result.stderr).toBe('')
+  })
+
+  it.each([401, 403, 429, 500])('reports HTTP %s without leaking response bodies or starting the child', async (status) => {
+    harness.env.INITX_TEST_HTTP_STATUS = String(status)
+    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    expect(result.code).toBe(1)
+    expect(stripVTControlCharacters(result.stdout)).toContain(`HTTP ${status}`)
+    expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
+    expect(result.stderr).toBe('')
+  })
+
+  it('distinguishes a missing store from authentication failure', async () => {
+    harness.env.INITX_TEST_MISSING_STORE = '1'
+    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    expect(result.code).toBe(1)
+    expect(result.stdout).toContain('store 文件不存在')
+    expect(result.stdout).not.toContain('should-not-run')
+  })
+
+  it.each([
+    ['private-token secret-response', 'store 文件不是合法 JSON'],
+    [JSON.stringify({ vars: { 'private-token secret-response': 123 } }), '字段：vars'],
+    [JSON.stringify({ vars: {}, targets: null }), '字段：targets'],
+    [JSON.stringify({ vars: {}, targets: { secrets: [{ repo: 'private-token secret-response' }] } }), '字段：targets.secrets'],
+    [JSON.stringify({ vars: {}, targets: { envFiles: [''] } }), '字段：targets.envFiles']
+  ])('reports a controlled store validation hint without private content: %s', async (content, hint) => {
+    harness.env.INITX_TEST_RAW_STORE = content
+    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    expect(result.code).toBe(1)
+    expect(result.stdout).toContain(hint)
+    expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
     expect(result.stderr).toBe('')
   })
 

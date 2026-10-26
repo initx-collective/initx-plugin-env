@@ -1,10 +1,12 @@
+import type { ResolvedEnvConfig } from '../config'
 import type { EnvCommandContext } from './env'
 import process from 'node:process'
 import { logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
+import { StorageError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
-import { readStore } from '../store'
+import { readStore, StoreReadError } from '../store'
 import { normalizeStoreName } from '../types'
 import { applyRunResult, runProcess } from '../utils/run-process'
 import { colorText } from '../utils/terminal'
@@ -58,6 +60,7 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
   // Report only our own diagnostics. Upstream errors may contain response bodies,
   // token-bearing URLs, store values or the complete command arguments.
   let stage = '参数'
+  let config: ResolvedEnvConfig | undefined
   try {
     const parsed = parseRunArgs(args, ctx.options.raw['--'])
     const allowed = new Set(['--', 'token', 'config', 'debug', 'd'])
@@ -71,12 +74,12 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
       throw new Error('--config 需要单个文件路径')
 
     stage = '配置'
-    const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
+    config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
     stage = '读取 store'
     const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
     const ref = await readStore(client, config.path, parsed.name)
     if (!ref)
-      throw new Error('store 不存在')
+      throw new StoreReadError('not-found')
     stage = '变量校验'
     const env = createRunEnv(ref.store.vars)
     stage = '启动子进程'
@@ -86,7 +89,17 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     applyRunResult(result)
   }
   catch (error) {
-    const detail = stage === '变量校验' || stage === '参数' ? `：${(error as Error).message}` : ''
+    let detail = ''
+    if (stage === '读取 store' && config) {
+      logger.info(colorText(`env run: 后端=${config.type}，配置来源=${config.configSource === 'local/env/default' ? '本地或环境变量' : '项目文件'}，凭据来源=${config.tokenSource}`, 'gray'))
+      if (error instanceof StorageError)
+        detail = `：${new StorageError(error.code, error.status).message}`
+      else if (error instanceof StoreReadError)
+        detail = `：${error.diagnostic()}`
+    }
+    else if (stage === '变量校验' || stage === '参数') {
+      detail = `：${(error as Error).message}`
+    }
     logger.error(colorText(`env run: ${stage}失败${detail}`, 'red'))
     process.exitCode = 1
   }
