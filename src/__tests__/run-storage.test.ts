@@ -117,9 +117,19 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
     expect(result.code).toBe(1)
     expect(stripVTControlCharacters(result.stdout)).toContain('env run: 读取 store失败：网络请求失败或超时')
-    expect(stripVTControlCharacters(result.stdout)).toContain(`后端=${type}，配置来源=项目文件，凭据来源=INITX_ENV_TOKEN`)
+    expect(result.stdout).not.toContain('后端=')
     expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run/)
     expect(result.stderr).toBe('')
+  })
+
+  it.each(['debug', 'd'])('prints resolved configuration metadata only with --%s on read failure', async (flag) => {
+    harness.env.INITX_TEST_HTTP_STATUS = '403'
+    const result = await (await execute(type, { [flag]: true, '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const output = stripVTControlCharacters(result.stdout)
+    expect(result.code).toBe(1)
+    expect(output).toContain(` DEBUG  env run: 后端=${type}，配置来源=项目文件，凭据来源=INITX_ENV_TOKEN`)
+    expect(output).toContain('HTTP 403')
+    expect(result.stdout + result.stderr).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
   })
 
   it.each([401, 403, 429, 500])('reports HTTP %s without leaking response bodies or starting the child', async (status) => {

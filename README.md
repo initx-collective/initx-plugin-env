@@ -392,12 +392,19 @@ All human-readable messages use the existing utils logger (which currently write
 Raw JSON, shell exports and GitHub Actions protocol lines remain data output without logger prefixes;
 the child's own stdout/stderr and exit status remain unchanged.
 
-When `env run` cannot read a store, it reports the resolved backend, whether configuration came
-from a project file, and the token source name (never its value). Known storage failures retain
-their HTTP status; malformed store JSON and schema failures have separate hints. Schema hints
+When `env run` cannot read a store, `--debug` (or `-d`) additionally reports the resolved backend,
+whether configuration came from a project file, and the token source name (never its value).
+Normal output keeps the error reason and HTTP status without configuration metadata.
+Malformed store JSON and schema failures have separate hints. Schema hints
 include only fixed field labels such as `vars` or `targets.secrets`, never variable names,
 store values, raw response bodies or arbitrary exception text. An explicit missing `--config`
 file fails during configuration and does not silently fall back to GitHub.
+
+```powershell
+ix env run acewill-slidev-production --config .initx-env.json --debug -- node -e "console.log('ENV_RUN_OK')"
+```
+
+Put the debug option before `--`; arguments after `--` belong to the child process.
 
 `pnpm test` runs unit tests and isolated child-process fixtures with fake GitHub/GitLab responses and
 temporary directories. Tests use the existing core matcher and direct command handlers, without
