@@ -123,6 +123,14 @@ describe('push 与文件引用', () => {
     expect(store.files).toBeUndefined()
   })
 
+  it('set 作用在引用键上等价于 --inline', async () => {
+    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    await handleEnv({ store: {}, options: createCliOptions() }, ['set', 'demo', 'A=changed'])
+    const store = savedStore()
+    expect(store.vars.A).toBe('changed')
+    expect(store.files).toBeUndefined()
+  })
+
   it('--prune 删除本地没有的引用键并清理文件条目', async () => {
     stub({ store: storeWith({ A: '${file-key}', B: 'plain' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('C=1\n')

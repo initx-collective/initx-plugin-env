@@ -10,7 +10,7 @@ import { resolveConfig } from '../config'
 import { assertEnvLimit, assertInlineLimit, maxFileBytes } from '../files/limits'
 import { storeFilesPath } from '../files/paths'
 import { analyzePush, hashBytes } from '../files/push'
-import { keysReferencing } from '../files/refs'
+import { collectVarFileRefs, keysReferencing, parseFileRef } from '../files/refs'
 import { resolveStoreVars } from '../files/resolve'
 import { isConflictError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
@@ -256,7 +256,19 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const { config, client } = createClient(ctx)
   const existing = await readStore(client, config.path, name)
   const store = existing?.store ?? createEmptyStore()
+  const refKeys = new Set(collectVarFileRefs(store).map(ref => ref.key))
   const change = applyVars(store, updates)
+  const detached = Object.keys(updates).filter(key => refKeys.has(key) && parseFileRef(store.vars[key] ?? '') === null)
+
+  // `set` 作用在引用键上等价于 --inline：值变成字面量，同时清掉不再被引用的文件条目。
+  if (store.files) {
+    for (const id of Object.keys(store.files)) {
+      if (!keysReferencing(store, id).length)
+        delete store.files[id]
+    }
+    if (!Object.keys(store.files).length)
+      delete store.files
+  }
 
   if (!change.added.length && !change.updated.length) {
     logger.info(`store "${colorText(name, 'blue')}" 无需改动（${change.unchanged.length} 个变量值相同）`)
@@ -271,6 +283,9 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
     `env: set ${Object.keys(updates).join(', ')} in ${name}`,
     existing?.version
   )
+
+  if (detached.length)
+    logger.warn(colorText(`这些键已改为普通值，文件条目已清理：${detached.join('、')}`, 'yellow'))
 
   logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}`, 'green'))
   for (const key of change.added)
