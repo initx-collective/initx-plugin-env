@@ -8,8 +8,8 @@ import { inquirer, logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
 import { assertEnvLimit, assertInlineLimit, maxFileBytes } from '../files/limits'
+import { storeFilesPath } from '../files/paths'
 import { analyzePush, hashBytes } from '../files/push'
-import { readStoreFileBytes } from '../files/read'
 import { collectVarFileRefs, keysReferencing, parseFileRef } from '../files/refs'
 import { resolveStoreVars } from '../files/resolve'
 import { isConflictError } from '../storage/errors'
@@ -281,8 +281,7 @@ async function runSet(ctx: EnvCommandContext, args: string[]): Promise<void> {
     name,
     store,
     `env: set ${Object.keys(updates).join(', ')} in ${name}`,
-    existing?.version,
-    existing?.legacy
+    existing?.version
   )
 
   if (detached.length)
@@ -367,13 +366,14 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
     if (update.bytes.byteLength > limit)
       throw new Error(`文件 "${update.id}" 超过 ${limit} 字节上限`)
 
-    const located = await readStoreFileBytes(client, config.path, name, update.id, { maxBytes: limit })
+    const path = storeFilesPath(config.path, name, update.id)
+    const current = await client.readBytes(path, { maxBytes: limit })
 
-    if (!located)
+    if (!current)
       throw new Error(`文件 "${update.id}" 不存在，无法 --update-files`)
 
-    await client.writeBytes(located.path, update.bytes, {
-      condition: { kind: 'update', expectedVersion: located.file.version },
+    await client.writeBytes(path, update.bytes, {
+      condition: { kind: 'update', expectedVersion: current.version },
       message: `env: update file ${update.id} (${update.key}) in ${name}`
     })
 
@@ -390,7 +390,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const message = `env: push ${name} from ${from}`
 
   try {
-    await writeStore(client, config.path, name, store, message, existing?.version, existing?.legacy)
+    await writeStore(client, config.path, name, store, message, existing?.version)
   }
   catch (error) {
     if (!isConflictError(error) || !ctx.options.boolean('force'))
@@ -398,7 +398,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
 
     const latest = await requireStore(client, config.path, name)
     logger.warn(colorText('远端已更新，--force：以本地文件为准重新写入', 'yellow'))
-    await writeStore(client, config.path, name, store, message, latest.version, latest.legacy)
+    await writeStore(client, config.path, name, store, message, latest.version)
   }
 
   if (analysis.inline.length)

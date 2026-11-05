@@ -77,7 +77,7 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
     await expect(adapter(type).readBytes('stores/_files/demo/key', { maxBytes: 3 })).rejects.toMatchObject({ name: 'StorageSizeError', limit: 3 })
   })
 
-  it('lists store directories and legacy JSON files at the selected directory', async () => {
+  it('lists store directories at the selected directory', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (String(url).includes('/commits/'))
         return Response.json({ id: 'head' })
@@ -85,11 +85,10 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
         { name: 'z.json', path: 'z.json', type: type === 'github' ? 'file' : 'blob' },
         { name: 'a.JSON', path: 'a.JSON', type: type === 'github' ? 'file' : 'blob' },
         { name: 'directory', path: 'directory', type: type === 'github' ? 'dir' : 'tree' },
-        { name: '_files', path: '_files', type: type === 'github' ? 'dir' : 'tree' },
         { name: 'README.md', path: 'README.md', type: type === 'github' ? 'file' : 'blob' }
       ])
     }))
-    expect(await listStores(adapter(type), '')).toEqual(['a', 'directory', 'z'])
+    expect(await listStores(adapter(type), '')).toEqual(['directory'])
   })
 
   it('distinguishes a missing file/directory from inaccessible repository or ref', async () => {

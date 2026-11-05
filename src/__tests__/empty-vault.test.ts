@@ -35,7 +35,7 @@ describe.each(['github', 'gitlab'] as const)('%s empty vault contract', (type: S
         return Response.json({ empty_repo: content === undefined })
       const listing = type === 'github' ? url.pathname.endsWith('/contents/stores') : url.pathname.endsWith('/tree')
       if (listing && content !== undefined)
-        return Response.json([{ name: 'demo.json', path: 'stores/demo.json', type: type === 'github' ? 'file' : 'blob' }])
+        return Response.json([{ name: 'demo', path: 'stores/demo', type: type === 'github' ? 'dir' : 'tree' }])
       if (content === undefined)
         return new Response(null, { status: 404 })
       return Response.json({ type: 'file', encoding: 'base64', content: Buffer.from(content).toString('base64'), sha: 'first-commit', last_commit_id: 'first-commit' })

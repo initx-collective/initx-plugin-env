@@ -34,16 +34,14 @@ function stub(remote: Remote = {}) {
       return new Response(null, { status: 200 })
     if (target.includes('/commits/'))
       return Response.json({ id: 'head' })
-    if (target.includes('/contents/test-stores/demo/_files?') || target.includes('/contents/test-stores/_files/demo?')) {
-      const base = target.includes('/contents/test-stores/demo/_files?') ? 'test-stores/demo/_files' : 'test-stores/_files/demo'
-      return Response.json((remote.list ?? []).map(item => ({ ...item, path: `${base}/${item.name}` })))
-    }
-    if (target.includes('/contents/test-stores/demo/_files/') || target.includes('/contents/test-stores/_files/demo/')) {
+    if (target.includes('/contents/test-stores/demo/_files?'))
+      return Response.json((remote.list ?? []).map(item => ({ ...item, path: `test-stores/demo/_files/${item.name}` })))
+    if (target.includes('/contents/test-stores/demo/_files/')) {
       return remote.file
         ? Response.json({ type: 'file', sha: 'file-version', encoding: 'base64', content: Buffer.from(remote.file).toString('base64'), size: remote.file.byteLength })
         : new Response('', { status: 404 })
     }
-    if (target.includes('/contents/test-stores/demo/env.json') || target.includes('/contents/test-stores/demo.json')) {
+    if (target.includes('/contents/test-stores/demo/env.json')) {
       return remote.store
         ? Response.json({ type: 'file', sha: 'store-version', encoding: 'base64', content: Buffer.from(JSON.stringify(remote.store)).toString('base64') })
         : new Response('', { status: 404 })

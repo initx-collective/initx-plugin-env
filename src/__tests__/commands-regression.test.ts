@@ -91,7 +91,7 @@ describe('原有命令回归（仅模拟 GitHub，不执行写接口）', () => 
       requests.push({ url: String(url), init })
       if (init?.method)
         return Response.json({ content: { sha: 'written' } })
-      if (String(url).includes('/contents/test-stores/demo/_files/key') || String(url).includes('/contents/test-stores/_files/demo/key'))
+      if (String(url).includes('/contents/test-stores/demo/_files/key'))
         return Response.json({ type: 'file', sha: 'file', encoding: 'base64', content: keyBytes.toString('base64'), size: keyBytes.byteLength })
       return Response.json({ type: 'file', sha: 'test', encoding: 'base64', content: Buffer.from(JSON.stringify(fileStore)).toString('base64') })
     }))

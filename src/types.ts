@@ -55,7 +55,7 @@ export type SecretTarget = z.infer<typeof secretTargetSchema>
 export const storeFileSchema = z.object({
   schema: z.number().int().positive().default(STORE_SCHEMA_VERSION),
   vars: z.record(z.string(), z.string()).default({}),
-  /** 文件型变量的元数据；没有它时 store 行为与旧版完全一致。 */
+  /** 文件型变量的元数据；没有它时只按普通变量处理。 */
   files: z.record(z.string(), fileEntrySchema).optional(),
   targets: z.object({
     /** pull 时写到哪个（些）文件；相对当前工作目录 */

@@ -36,7 +36,7 @@ beforeEach(async () => {
     if (url.pathname.includes('/commits/'))
       return Response.json({ id: 'head' })
     if (url.pathname.endsWith('/tree'))
-      return Response.json([{ name: 'demo.json', path: 'stores/demo.json', type: 'blob' }])
+      return Response.json([{ name: 'demo', path: 'stores/demo', type: 'tree' }])
     if (init.method) {
       vars = JSON.parse(Buffer.from(JSON.parse(init.body).content, 'base64').toString()).vars
       return Response.json({ file_path: 'stores/demo.json' })

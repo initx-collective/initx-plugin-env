@@ -7,7 +7,7 @@
 > [存储适配器实现记录](gitlab-storage-implementation.md) 和 README 为准。
 > GitHub Secrets 的只写不读限制只适用于该目标，不代表所有 CI 平台都不能读取变量。
 > 2026-11-05 更新：store 已从扁平 `<path>/<store>.json` 改为目录 `<path>/<store>/env.json`，
-> 文件对象在 `<path>/<store>/_files/<id>`；旧布局首次写入时自动迁移。
+> 文件对象在 `<path>/<store>/_files/<id>`。
 
 > 把「本地 `.env` / CI secrets」的唯一真相源放在**一个私有 GitHub 仓库**里，
 > 插件负责两个投影：**拉到本地** 和 **写进 CI**。

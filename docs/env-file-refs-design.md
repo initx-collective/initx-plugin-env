@@ -44,7 +44,7 @@ GCP service account JSON 这类「本来就是一个文件」的值，只能 bas
 | --- | --- | --- |
 | D1 | 引用是**整值引用**，不是插值 | 只有整值替换才能无损处理二进制、换行、编码；插值会引入「文本还是字节」的歧义和注入面 |
 | D2 | 引用和元数据写在 store 的 `files` 区块，作为 **schema 1 的可选字段** | 只有作者本人在用，没有老客户端需要区分，不必升版本；`files` 缺失时行为与现状完全一致 |
-| D3 | 文件放在 `<path>/<store>/_files/<id>` | 与 `env.json` 同属一个 store 目录，跟着已有的 `path` 配置走，不引入第二个配置项；`listStores` 识别目录，旧版 `_files` 被忽略 |
+| D3 | 文件放在 `<path>/<store>/_files/<id>` | 与 `env.json` 同属一个 store 目录，跟着已有的 `path` 配置走，不引入第二个配置项 |
 | D4 | 独立命令族 `env file add/ls/cat/pull/rm/check` | 见 §3.1 |
 | D5 | 解引用集中在 resolver，所有出口共用 | 避免 `pull` / `run` / `apply` 各写一套，出现「本地和 CI 值不一样」 |
 | D6 | `push` 遇到引用默认**报错**，不静默内联 | 本地 `.env` 里是解析后的明文，直接回写会把文件内容塞回 vars，引用被破坏且不可逆 |
@@ -152,8 +152,7 @@ store 不存在时创建空 store（与 `set` 一致），并打印一行提示�
 
 - **不存 `path`**：路径固定按 `<store>/_files/<id>` 推导。没有跨 store 共享，显式路径只多一处
   需要校验的不一致。
-- **旧版兼容**：`stores/<name>.json` 与 `stores/_files/<store>/` 仍可读取；第一次写入时把
-  `env.json` 和文件对象迁移到 `stores/<name>/`，再删除旧文件。
+
 - `encoding` 决定**注入形态**，不决定存储形态：文件永远按原始字节存。
   - `utf8`：字节按 UTF-8 解码后注入；上传时解码失败直接报错，提示改用 `base64`。
   - `base64`：注入 `base64(原始字节)` 文本，正好覆盖现在手工 base64 的用法。

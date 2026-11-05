@@ -400,9 +400,7 @@ Arbitrary response messages are never forwarded to the caller or printed.
 }
 ```
 
-Each store is a directory: `stores/<store>/env.json` plus `stores/<store>/_files/<id>`. Older flat
-stores (`stores/<store>.json` with `stores/_files/<store>/`) are still readable; the next write
-migrates the JSON and its files into the directory automatically.
+Each store is a directory: `stores/<store>/env.json` plus `stores/<store>/_files/<id>`.
 
 ## Good to know
 

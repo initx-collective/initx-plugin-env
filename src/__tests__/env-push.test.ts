@@ -32,7 +32,7 @@ function stub(remote: Remote = {}) {
       return new Response(null, { status: 200 })
     if (target.includes('/commits/'))
       return Response.json({ id: 'head' })
-    if (target.includes('/contents/test-stores/demo/_files/') || target.includes('/contents/test-stores/_files/demo/')) {
+    if (target.includes('/contents/test-stores/demo/_files/')) {
       return remote.file
         ? Response.json({ type: 'file', sha: 'file-version', encoding: 'base64', content: Buffer.from(remote.file).toString('base64'), size: remote.file.byteLength })
         : new Response('', { status: 404 })
