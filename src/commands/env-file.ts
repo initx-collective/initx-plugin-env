@@ -310,12 +310,14 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
       throw new Error(`目标文件已存在：${id}（加 --force 覆盖）`)
 
     const file = await readVerifiedFile(client, config.path, name, id, entry)
+    const mode = Number.parseInt(entry.mode ?? '600', 8)
 
     try {
-      await writeFile(target, file.bytes)
+      // 创建时就带上权限，避免先 0644 再 chmod 的短暂窗口。
+      await writeFile(target, file.bytes, { mode })
 
       if (process.platform !== 'win32')
-        await chmod(target, Number.parseInt(entry.mode ?? '600', 8))
+        await chmod(target, mode)
     }
     catch {
       throw new Error(`写入文件 "${id}" 失败，请检查目录权限`)
