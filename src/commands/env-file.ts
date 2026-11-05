@@ -222,15 +222,17 @@ async function runList(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const used = new Set(refs.map(item => item.id))
   const dangling = Object.keys(ref.store.files ?? {}).filter(id => !used.has(id))
 
-  if (!refs.length) {
-    logger.info(`store "${colorText(name, 'blue')}" 没有文件引用`)
-  }
-  else if (ctx.options.boolean('json')) {
+  if (ctx.options.boolean('json')) {
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(refs.map(({ key, id }) => {
       const entry = ref.store.files?.[id]
       return entry ? { key, id, ...entry } : { key, id, missing: true }
     })))
+    return
+  }
+
+  if (!refs.length) {
+    logger.info(`store "${colorText(name, 'blue')}" 没有文件引用`)
   }
   else {
     logger.info(`store "${colorText(name, 'blue')}" 共 ${refs.length} 个文件引用：`)
@@ -443,14 +445,17 @@ async function runCheck(ctx: EnvCommandContext, args: string[]): Promise<void> {
   if (ctx.options.boolean('json')) {
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ store: name, problems }, null, 2))
-  }
-  else {
-    for (const problem of problems)
-      logger.error(colorText(`  ${describeProblem(problem)}`, 'red'))
 
-    if (!problems.length)
-      logger.success(colorText(`store "${name}" check 通过`, 'green'))
+    if (problems.length)
+      process.exitCode = 1
+    return
   }
+
+  for (const problem of problems)
+    logger.error(colorText(`  ${describeProblem(problem)}`, 'red'))
+
+  if (!problems.length)
+    logger.success(colorText(`store "${name}" check 通过`, 'green'))
 
   if (problems.length) {
     logger.error(colorText(`check: ${problems.length} 个问题`, 'red'))

@@ -156,6 +156,14 @@ describe('env file ls cat pull rm check', () => {
     }])
   })
 
+  it('ls --json 在没有引用时输出空数组而不是日志', async () => {
+    stub({ store: fileStore({}, {}) })
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await handleEnvFile({ store: storeConfig, options: createCliOptions({ json: true }) }, ['ls', 'demo'])
+    expect(JSON.parse(String(output.mock.calls[0]![0]))).toEqual([])
+    expect(logger.info).not.toHaveBeenCalled()
+  })
+
   it('cat 默认只报元数据，--show 才输出注入值', async () => {
     stub({ store: fileStore({ KEY: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -236,6 +244,7 @@ describe('env file ls cat pull rm check', () => {
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
     await handleEnvFile({ store: storeConfig, options: createCliOptions({ json: true }) }, ['check', 'demo'])
     const report = JSON.parse(String(output.mock.calls[0]![0]))
+    expect(output).toHaveBeenCalledTimes(1)
     const types = report.problems.map((problem: { type: string }) => problem.type)
     expect(types).toContain('undeclared-ref')
     expect(types).toContain('dangling-metadata')
