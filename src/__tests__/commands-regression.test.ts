@@ -57,6 +57,14 @@ describe('原有命令回归（仅模拟 GitHub，不执行写接口）', () => 
     expect(output.mock.calls.flat()).toContain('::add-mask::new')
   })
 
+  it('setup 与 pull 对超限值硬失败', async () => {
+    vars = { BIG: 'x'.repeat(32 * 1024 + 1) }
+    await expect(handleEnv({ store: {}, options: createCliOptions() }, ['setup', 'demo'])).rejects.toThrow(/32768 字节环境变量上限/)
+
+    vars = { BIG: 'x'.repeat(1024 * 1024 + 1) }
+    await expect(handleEnv({ store: {}, options: createCliOptions({ to: join(harness.directory, '.env.big') }) }, ['pull', 'demo'])).rejects.toThrow(/1048576 字节内联上限/)
+  })
+
   it('pull 保留其他键，重复运行不改字节；push 保留远端独有键', async () => {
     const path = join(harness.directory, '.env.local')
     await writeFile(path, '# comment\nA=old\nLOCAL=keep\n')
