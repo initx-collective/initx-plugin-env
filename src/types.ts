@@ -4,6 +4,37 @@ import { z } from 'zod'
 export const STORE_SCHEMA_VERSION = 1
 
 /**
+ * 文件型变量的 id 规则：小写、以字母或数字开头、最多 64 字符，
+ * 允许 `-` `_` `.`。它同时是仓库里的文件名，必须过 `assertSafePath`。
+ */
+export const FILE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
+
+export function isValidFileId(id: string): boolean {
+  return FILE_ID_PATTERN.test(id)
+}
+
+export const FILE_ENCODINGS = ['utf8', 'base64'] as const
+export type FileEncoding = (typeof FILE_ENCODINGS)[number]
+
+/**
+ * `files` 里一个文件对象的元数据。路径不存，固定按
+ * `<path>/_files/<store>/<id>` 推导。
+ *
+ * - `sha256` 是内容哈希：解引用校验、push 零下载比对都靠它；
+ * - `bytes` 让 48 KB / 1 MiB / 32 KB 这些上限在下载前就能预检；
+ * - `encoding` 决定注入形态（文本 / base64 文本），不决定存储形态；
+ * - `mode` 是字符串，避免 JSON 数字丢前导零；非 POSIX 平台忽略。
+ */
+export const fileEntrySchema = z.object({
+  sha256: z.string().regex(/^[a-f0-9]{64}$/, '必须是 64 位小写十六进制'),
+  bytes: z.number().int().nonnegative(),
+  encoding: z.enum(['utf8', 'base64']).default('utf8'),
+  mode: z.string().regex(/^[0-7]{3,4}$/, '必须是 3-4 位八进制').optional()
+}).strict()
+
+export type FileEntry = z.infer<typeof fileEntrySchema>
+
+/**
  * `apply` 的目标：把 store 里的变量写进哪个仓库的 Actions secrets。
  * 只有一个仓库时可以不配 `targets.secrets`，用 `--repo` 传。
  */
@@ -24,6 +55,8 @@ export type SecretTarget = z.infer<typeof secretTargetSchema>
 export const storeFileSchema = z.object({
   schema: z.number().int().positive().default(STORE_SCHEMA_VERSION),
   vars: z.record(z.string(), z.string()).default({}),
+  /** 文件型变量的元数据；没有它时 store 行为与旧版完全一致。 */
+  files: z.record(z.string(), fileEntrySchema).optional(),
   targets: z.object({
     /** pull 时写到哪个（些）文件；相对当前工作目录 */
     envFiles: z.array(z.string().min(1)).optional(),

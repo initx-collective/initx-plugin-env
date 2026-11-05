@@ -2,7 +2,7 @@ import type { StorageAdapter } from './storage/types'
 import type { StoreFile } from './types'
 import { requireCapability } from './storage/factory'
 import { assertSafePath } from './storage/path'
-import { createEmptyStore, normalizeStoreName, STORE_SCHEMA_VERSION, storeFileSchema } from './types'
+import { createEmptyStore, isValidFileId, normalizeStoreName, STORE_SCHEMA_VERSION, storeFileSchema } from './types'
 
 /**
  * store 的读写层：一个 store = 仓库里的一个 JSON 文件（`<path>/<name>.json`）。
@@ -25,7 +25,7 @@ export interface StoreVarsChange {
   unchanged: string[]
 }
 
-type StoreField = 'schema' | 'vars' | 'targets' | 'targets.envFiles' | 'targets.secrets' | 'root'
+type StoreField = 'schema' | 'vars' | 'files' | 'targets' | 'targets.envFiles' | 'targets.secrets' | 'root'
 
 /** A controlled diagnostic separate from detailed parser messages and user-supplied keys. */
 export class StoreReadError extends Error {
@@ -74,10 +74,15 @@ export function parseStore(content: string, name: string): StoreFile {
       const [field, child] = issue.path
       if (field === 'targets' && (child === 'envFiles' || child === 'secrets'))
         return `targets.${child}`
-      return field === 'schema' || field === 'vars' || field === 'targets' ? field : 'root'
+      return field === 'schema' || field === 'vars' || field === 'files' || field === 'targets' ? field : 'root'
     })
     throw new StoreReadError('invalid-shape', [...new Set(fields)], `store "${name}" 结构不合法：${result.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`)
   }
+
+  const invalidId = Object.keys(result.data.files ?? {}).find(id => !isValidFileId(id))
+
+  if (invalidId !== undefined)
+    throw new StoreReadError('invalid-shape', ['files'], `store "${name}" 结构不合法：文件 id "${invalidId}" 不合法`)
 
   return result.data
 }
