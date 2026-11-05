@@ -53,6 +53,10 @@ export interface MergeResult {
   duplicates: string[]
   changed: boolean
 }
+export interface MergeOptions {
+  /** 这些键一律用双引号包裹（文件解析出的多行值需要固定表示）。 */
+  forceQuote?: ReadonlySet<string>
+}
 export interface EnvDiff {
   added: string[]
   updated: string[]
@@ -97,7 +101,7 @@ async function statOrNull(path: string): Promise<Stats | null> {
 }
 
 function unescapeDouble(value: string): string {
-  return value.replace(/\\([nrt"\\])/g, (_match: string, char: string) =>
+  return value.replace(/\\([nrt"\\$`])/g, (_match: string, char: string) =>
     char === 'n' ? '\n' : char === 'r' ? '\r' : char === 't' ? '\t' : char)
 }
 
@@ -189,9 +193,11 @@ function readEntry(lines: string[], index: number): EnvPair | null {
 }
 
 export function parseEnv(content: string): EnvParseResult {
-  const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n'
-  const trailingNewline = content.endsWith('\n')
-  const lines = splitLines(content)
+  // 文件头 BOM 只在整文件读取时剥离一次；否则第一个键名会变成 \uFEFFKEY。
+  const text = content.charCodeAt(0) === 0xFEFF ? content.slice(1) : content
+  const eol: '\n' | '\r\n' = text.includes('\r\n') ? '\r\n' : '\n'
+  const trailingNewline = text.endsWith('\n')
+  const lines = splitLines(text)
   const pairs = new Map<string, string>()
   const duplicates: string[] = []
   const entries: EnvPair[] = []
@@ -224,12 +230,15 @@ function canBeUnquoted(value: string): boolean {
   return value !== '' && !NEEDS_QUOTING.test(value)
 }
 
-function renderValue(value: string): string {
-  if (canBeUnquoted(value))
+function renderValue(value: string, forceQuote = false): string {
+  if (!forceQuote && canBeUnquoted(value))
     return value
+  // `$` 和反引号在双引号里仍会被 POSIX shell 展开/执行，必须一并转义。
   const escaped = value
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
@@ -237,8 +246,8 @@ function renderValue(value: string): string {
 }
 
 /** The `export ` prefix is kept on a rewritten line; an appended line is plain. */
-function renderKeyValue(key: string, value: string, exportPrefix: boolean): string {
-  return `${exportPrefix ? 'export ' : ''}${key}=${renderValue(value)}`
+function renderKeyValue(key: string, value: string, exportPrefix: boolean, forceQuote = false): string {
+  return `${exportPrefix ? 'export ' : ''}${key}=${renderValue(value, forceQuote)}`
 }
 
 function joinLines(lines: string[], eol: '\n' | '\r\n', trailingNewline: boolean): string {
@@ -264,10 +273,11 @@ function planChanges(original: string, updates: Record<string, string>): { added
   return { added, updated, unchanged, target }
 }
 
-export function mergeEnv(original: string, updates: Record<string, string>): MergeResult {
+export function mergeEnv(original: string, updates: Record<string, string>, options: MergeOptions = {}): MergeResult {
+  const forceQuote = options.forceQuote
   // An empty file carries no EOL / trailing-newline hint, so render it fresh.
   if (original === '') {
-    const content = renderEnvFile(updates)
+    const content = renderEnvFile(updates, '\n', options)
     return { content, added: Object.keys(updates), updated: [], unchanged: [], duplicates: [], changed: content !== original }
   }
   const parse = parseEnv(original)
@@ -289,7 +299,7 @@ export function mergeEnv(original: string, updates: Record<string, string>): Mer
       continue
     // Only the first physical line is replaced; the absorbed lines are dropped,
     // so the pair collapses back into a single line.
-    const rendered = renderKeyValue(entry.key, value, entry.exportPrefix)
+    const rendered = renderKeyValue(entry.key, value, entry.exportPrefix, forceQuote?.has(entry.key) ?? false)
     lines.splice(entry.startLine, entry.endLine - entry.startLine + 1, rendered)
   }
   if (added.length > 0) {
@@ -297,14 +307,14 @@ export function mergeEnv(original: string, updates: Record<string, string>): Mer
     if (lines.length > 0 && lines[lines.length - 1].trim() !== '')
       lines.push('')
     for (const key of added)
-      lines.push(renderKeyValue(key, updates[key], false))
+      lines.push(renderKeyValue(key, updates[key], false, forceQuote?.has(key) ?? false))
   }
   const content = joinLines(lines, parse.eol, parse.trailingNewline)
   return { content, added, updated, unchanged, duplicates: parse.duplicates, changed: content !== original }
 }
 
-export function renderEnvFile(updates: Record<string, string>, eol: '\n' | '\r\n' = '\n'): string {
-  const lines = Object.entries(updates).map(([key, value]) => renderKeyValue(key, value, false))
+export function renderEnvFile(updates: Record<string, string>, eol: '\n' | '\r\n' = '\n', options: MergeOptions = {}): string {
+  const lines = Object.entries(updates).map(([key, value]) => renderKeyValue(key, value, false, options.forceQuote?.has(key) ?? false))
   if (lines.length === 0)
     return ''
   // Always newline-terminated: this is a freshly generated file.

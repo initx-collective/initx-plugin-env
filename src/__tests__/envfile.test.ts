@@ -283,6 +283,36 @@ describe('renderEnvFile', () => {
   })
 })
 
+describe('shell 展开字符与强制引号', () => {
+  it('转义 $ 与反引号并可无损解析', () => {
+    const value = 'pa$word `tick` $(cmd)'
+    const content = renderEnvFile({ A: value })
+
+    expect(content).toContain('\\$')
+    expect(content).toContain('\\`')
+    expect(parseEnv(content).pairs.get('A')).toBe(value)
+  })
+
+  it('forceQuote 让安全值也用双引号，多行 PEM 原样往返', () => {
+    expect(mergeEnv('', { A: 'plain' }, { forceQuote: new Set(['A']) }).content).toBe('A="plain"\n')
+
+    const pem = '-----BEGIN KEY-----\nABCD\n-----END KEY-----\n'
+    const content = mergeEnv('', { KEY: pem }, { forceQuote: new Set(['KEY']) }).content
+
+    expect(content).toContain('\\n-----END KEY-----\\n')
+    expect(parseEnv(content).pairs.get('KEY')).toBe(pem)
+  })
+
+  it('未知转义保持原样（Windows 路径）', () => {
+    expect(parseEnv('PATH="C:\\Users\\me"\n').pairs.get('PATH')).toBe('C:\\Users\\me')
+  })
+
+  it('剥离 .env 文件头 BOM', () => {
+    expect(parseEnv('\uFEFFA=1\n').pairs.get('A')).toBe('1')
+    expect(mergeEnv('\uFEFFA=1\n', { A: '2' }).content).toBe('A=2\n')
+  })
+})
+
 describe('diffEnv', () => {
   it('classifies added, updated, unchanged and local-only keys', () => {
     const original = 'A=1\nB=2\nC=3\n'

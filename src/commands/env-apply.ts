@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer'
 import { logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
+import { resolveStoreVars } from '../files/resolve'
 import { createStorageAdapter } from '../storage/factory'
 import { validateStorageRepo } from '../storage/path'
 import { readStore } from '../store'
@@ -60,7 +61,8 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
 
   const targetEnv = ctx.options.string('env') ?? target?.env ?? null
   const only = ctx.options.string('only')?.split(',').map(item => item.trim()).filter(Boolean)
-  const entries = Object.entries(ref.store.vars)
+  const resolved = await resolveStoreVars(client, config.path, name, ref.store, { keys: only })
+  const entries = Object.entries(resolved.vars)
     .filter(([key]) => !only || only.includes(key))
 
   if (!entries.length) {

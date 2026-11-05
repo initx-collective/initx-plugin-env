@@ -1,4 +1,6 @@
+/* eslint-disable no-template-curly-in-string -- 用例断言的就是字面量占位符 */
 import { Buffer } from 'node:buffer'
+import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -68,6 +70,29 @@ describe('原有命令回归（仅模拟 GitHub，不执行写接口）', () => 
     const written = requests.find(request => request.init?.method === 'PUT')!
     const body = JSON.parse(String(written.init!.body))
     expect(JSON.parse(Buffer.from(body.content, 'base64').toString()).vars).toEqual({ A: 'changed', REMOTE: 'keep', LOCAL: 'keep' })
+  })
+
+  it('pull 与 setup 解引用文件并按多行格式写出', async () => {
+    const keyBytes = Buffer.from('-----BEGIN KEY-----\nABC\n-----END KEY-----\n')
+    const fileStore = {
+      schema: 1,
+      vars: { KEY: '${file-key}' },
+      files: { key: { sha256: createHash('sha256').update(keyBytes).digest('hex'), bytes: keyBytes.byteLength, encoding: 'utf8', mode: '600' } }
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      requests.push({ url: String(url), init })
+      if (init?.method)
+        return Response.json({ content: { sha: 'written' } })
+      if (String(url).includes('/contents/test-stores/_files/demo/key'))
+        return Response.json({ type: 'file', sha: 'file', encoding: 'base64', content: keyBytes.toString('base64'), size: keyBytes.byteLength })
+      return Response.json({ type: 'file', sha: 'test', encoding: 'base64', content: Buffer.from(JSON.stringify(fileStore)).toString('base64') })
+    }))
+    const path = join(harness.directory, '.env.file')
+    await handleEnv({ store: {}, options: createCliOptions({ to: path }) }, ['pull', 'demo'])
+    expect(await readFile(path, 'utf8')).toBe('KEY="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\n')
+
+    await handleEnv({ store: {}, options: createCliOptions() }, ['setup', 'demo'])
+    expect(await readFile(harness.env.GITHUB_ENV!, 'utf8')).toContain('KEY<<')
   })
 
   it('status 展示生效配置，get/list 仍展示持久化值且不回写', async () => {

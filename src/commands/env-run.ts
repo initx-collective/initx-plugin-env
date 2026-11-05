@@ -4,6 +4,9 @@ import process from 'node:process'
 import { logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
+import { MAX_ENV_BYTES, oversizedValues } from '../files/limits'
+import { FileRefError } from '../files/refs'
+import { resolveStoreVars } from '../files/resolve'
 import { StorageError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
 import { readStore, StoreReadError } from '../store'
@@ -81,10 +84,15 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     if (!ref)
       throw new StoreReadError('not-found')
     stage = '变量校验'
-    const env = createRunEnv(ref.store.vars)
+    const resolved = await resolveStoreVars(client, config.path, parsed.name, ref.store)
+    for (const item of oversizedValues(resolved.vars, MAX_ENV_BYTES))
+      logger.warn(colorText(`env run: ${item.key} 有 ${item.bytes} 字节，超过 ${MAX_ENV_BYTES} 字节建议上限；大文件请用 initx env file pull ${parsed.name} --to-dir <dir> 落盘后传路径`, 'yellow'))
+    const env = createRunEnv(resolved.vars)
     stage = '启动子进程'
     const result = await runProcess(parsed.command, parsed.args, env)
-    if (result.errorCode)
+    if (result.errorCode === 'E2BIG')
+      logger.error(colorText(`env run: 环境变量总大小超过平台上限（E2BIG）。改用 initx env file pull ${parsed.name} --to-dir <dir> 落盘后用路径传参`, 'red'))
+    else if (result.errorCode)
       logger.error(colorText(`env run: 启动失败（${result.errorCode}）`, 'red'))
     applyRunResult(result)
   }
@@ -97,6 +105,8 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
         detail = `：${new StorageError(error.code, error.status).message}`
       else if (error instanceof StoreReadError)
         detail = `：${error.diagnostic()}`
+      else if (error instanceof FileRefError)
+        detail = `：${error.message}`
     }
     else if (stage === '变量校验' || stage === '参数') {
       detail = `：${(error as Error).message}`

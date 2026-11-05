@@ -7,6 +7,8 @@ import process from 'node:process'
 import { inquirer, logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
+import { assertEnvLimit, assertInlineLimit } from '../files/limits'
+import { resolveStoreVars } from '../files/resolve'
 import { isConflictError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
 import { applyVars, listStores, readStore, writeStore } from '../store'
@@ -172,7 +174,8 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const { config, client } = createClient(ctx)
   const name = await pickStoreName(client, config.path, args[0])
   const ref = await requireStore(client, config.path, name)
-  const vars = ref.store.vars
+  const resolved = await resolveStoreVars(client, config.path, name, ref.store)
+  const vars = resolved.vars
   const keys = Object.keys(vars)
 
   if (!keys.length) {
@@ -180,12 +183,14 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
     return
   }
 
+  assertInlineLimit(vars, name)
+
   const targets = await resolveTargets(ctx, ref)
   const dryRun = ctx.options.boolean('dry-run')
 
   for (const target of targets) {
     const original = await readEnvFileIfExists(target) ?? ''
-    const result = mergeEnv(original, vars)
+    const result = mergeEnv(original, vars, { forceQuote: resolved.fileKeys })
 
     if (!result.changed) {
       logger.info(`${colorText(target, 'blue')}: 已经是最新的（${keys.length} 个变量，无需改动）`)
@@ -339,10 +344,13 @@ async function runSetup(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const { config, client } = createClient(ctx)
   const name = await pickStoreName(client, config.path, args[0])
   const ref = await requireStore(client, config.path, name)
-  const vars = ref.store.vars
+  const resolved = await resolveStoreVars(client, config.path, name, ref.store)
+  const vars = resolved.vars
 
   if (!Object.keys(vars).length)
     throw new Error(`store "${name}" 里没有任何变量`)
+
+  assertEnvLimit(vars, name)
 
   if (ctx.options.boolean('json')) {
     // 给 workflow 里 `fromJson(steps.x.outputs.vars)` 用
