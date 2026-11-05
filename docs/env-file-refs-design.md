@@ -1,6 +1,8 @@
 # 方案：文件型变量（store 内的文件引用）
 
-> 状态：设计稿，未实现。目标版本 0.2.0。
+> 状态：已实现，版本 0.2.0。
+> 代码：`src/files/`（引用解析、字节读取、push 分析）、`src/commands/env-file.ts`、
+> `src/storage/github.ts` / `gitlab.ts`（`readBytes` / `writeBytes`）。
 > 关联：[初始方案](plan.md)、[env run 设计](env-run-design.md)。
 >
 > **范围声明（自用版）**：本方案只服务「本地新增文件引用 → push → CI 消费」这一条路径。
