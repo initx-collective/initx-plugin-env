@@ -6,11 +6,12 @@ import { createCliOptions } from './cli-options'
 import { handleEnv } from './commands/env'
 import { handleEnvApply } from './commands/env-apply'
 import { handleEnvConfig, printConfigHelp } from './commands/env-config'
+import { handleEnvFile } from './commands/env-file'
 import { handleEnvRun } from './commands/env-run'
 import { DEFAULT_BRANCH, DEFAULT_PATH } from './config'
 import { reportCommandError } from './utils/terminal'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run', 'help']
+const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run', 'file', 'help']
 const CONFIG_ACTIONS = ['setup', 'set', 'get', 'list', 'ls', 'rm', 'remove', 'status', 'help']
 
 export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
@@ -92,6 +93,11 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
       return
     }
 
+    if (action === 'file') {
+      await handleEnvFile({ store, options }, params)
+      return
+    }
+
     await handleEnv({ store, options }, [action, ...params])
   }
 }
@@ -118,6 +124,12 @@ function printEnvHelp(): void {
                               --only A,B         只写这几个
                               --dry-run          只列出将写入的名字
                               --skip-invalid     跳过名字不合法的变量（默认中止）
+  file add <store> KEY --file <path>
+                              上传文件并把变量改成 \${file-<id>} 引用
+                              --as <id>          指定文件 id（默认由 KEY 推导）
+                              --encoding base64  注入 base64 文本（默认 utf8）
+                              --mode 600         落盘权限提示（file pull 使用）
+                              --dry-run          只报告，不上传
   run <store> -- cmd [args]   直接注入子进程，继承 stdio / cwd，传递退出状态
                               --token <pat>      临时凭据（CI 推荐 INITX_ENV_TOKEN）
 
