@@ -88,7 +88,7 @@ async function readInput(path: string): Promise<Uint8Array> {
       return new Uint8Array(await readFile(path))
     }
     catch {
-      throw new Error(`无法读取文件 "${path}"`)
+      throw new Error('无法读取 --file 指定的文件，请检查路径与权限')
     }
   }
 
@@ -286,7 +286,13 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
   if (!refs.length)
     throw new Error(`store "${name}" 没有可落盘的文件引用`)
 
-  await mkdir(dir, { recursive: true })
+  try {
+    await mkdir(dir, { recursive: true })
+  }
+  catch {
+    throw new Error('无法创建目标目录，请检查 --to-dir 与权限')
+  }
+
   const written = new Set<string>()
 
   for (const { key, id } of refs) {
@@ -301,16 +307,22 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
     const target = join(dir, id)
 
     if (!ctx.options.boolean('force') && await exists(target))
-      throw new Error(`目标文件已存在：${target}（加 --force 覆盖）`)
+      throw new Error(`目标文件已存在：${id}（加 --force 覆盖）`)
 
     const file = await readVerifiedFile(client, config.path, name, id, entry)
-    await writeFile(target, file.bytes)
 
-    if (process.platform !== 'win32')
-      await chmod(target, Number.parseInt(entry.mode ?? '600', 8))
+    try {
+      await writeFile(target, file.bytes)
+
+      if (process.platform !== 'win32')
+        await chmod(target, Number.parseInt(entry.mode ?? '600', 8))
+    }
+    catch {
+      throw new Error(`写入文件 "${id}" 失败，请检查目录权限`)
+    }
 
     written.add(id)
-    logger.success(colorText(`${key} → ${target}`, 'green'))
+    logger.success(colorText(`${key} → ${id}`, 'green'))
   }
 
   logger.info('提示：确认目标目录在 .gitignore 内，避免密钥被提交')
