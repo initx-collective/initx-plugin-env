@@ -32,12 +32,12 @@ function stub(remote: Remote = {}) {
       return new Response(null, { status: 200 })
     if (target.includes('/commits/'))
       return Response.json({ id: 'head' })
-    if (target.includes('/contents/test-stores/_files/demo/')) {
+    if (target.includes('/contents/test-stores/demo/_files/') || target.includes('/contents/test-stores/_files/demo/')) {
       return remote.file
         ? Response.json({ type: 'file', sha: 'file-version', encoding: 'base64', content: Buffer.from(remote.file).toString('base64'), size: remote.file.byteLength })
         : new Response('', { status: 404 })
     }
-    if (target.includes('/contents/test-stores/demo.json')) {
+    if (target.includes('/contents/test-stores/demo/env.json') || target.includes('/contents/test-stores/demo.json')) {
       return remote.store
         ? Response.json({ type: 'file', sha: 'store-version', encoding: 'base64', content: Buffer.from(JSON.stringify(remote.store)).toString('base64') })
         : new Response('', { status: 404 })
@@ -51,7 +51,7 @@ function storeWith(vars: Record<string, string>, files: Record<string, { sha256:
 }
 
 function storeWrite() {
-  return requests.find(request => request.init?.method === 'PUT' && String(request.url).includes('/contents/test-stores/demo.json'))
+  return requests.find(request => request.init?.method === 'PUT' && String(request.url).includes('/contents/test-stores/demo/env.json'))
 }
 
 function savedStore(): { vars: Record<string, string>, files?: Record<string, unknown> } {
@@ -105,7 +105,7 @@ describe('push 与文件引用', () => {
 
     const writes = requests.filter(request => request.init?.method === 'PUT')
     expect(writes).toHaveLength(2)
-    expect(writes[0]!.url).toContain('/contents/test-stores/_files/demo/key')
+    expect(writes[0]!.url).toContain('/contents/test-stores/demo/_files/key')
 
     const store = savedStore()
     expect(store.vars.A).toBe('${file-key}')

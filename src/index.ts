@@ -110,7 +110,7 @@ function printEnvHelp(): void {
   pull [store]                拉取到本地 .env（不写名字就列出来选）
                               --to .env.local  指定目标文件（可逗号分隔多个）
                               --dry-run        只看会改哪些键，不写文件
-  set <store> KEY=value ...   直接往仓库里的 store 写变量（store 名就是文件名）
+  set <store> KEY=value ...   直接往仓库里的 store 写变量（store 名就是目录名）
   push <store>                从本地 .env 反向更新 store
                               --from .env.local  指定来源文件（默认 .env.local → .env）
                               --prune            删掉仓库里本地没有的键

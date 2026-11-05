@@ -77,18 +77,19 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
     await expect(adapter(type).readBytes('stores/_files/demo/key', { maxBytes: 3 })).rejects.toMatchObject({ name: 'StorageSizeError', limit: 3 })
   })
 
-  it('lists only JSON files at the selected directory and supports repository root', async () => {
+  it('lists store directories and legacy JSON files at the selected directory', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (String(url).includes('/commits/'))
         return Response.json({ id: 'head' })
       return Response.json([
         { name: 'z.json', path: 'z.json', type: type === 'github' ? 'file' : 'blob' },
         { name: 'a.JSON', path: 'a.JSON', type: type === 'github' ? 'file' : 'blob' },
-        { name: 'directory.json', path: 'directory.json', type: type === 'github' ? 'dir' : 'tree' },
+        { name: 'directory', path: 'directory', type: type === 'github' ? 'dir' : 'tree' },
+        { name: '_files', path: '_files', type: type === 'github' ? 'dir' : 'tree' },
         { name: 'README.md', path: 'README.md', type: type === 'github' ? 'file' : 'blob' }
       ])
     }))
-    expect(await listStores(adapter(type), '')).toEqual(['a', 'z'])
+    expect(await listStores(adapter(type), '')).toEqual(['a', 'directory', 'z'])
   })
 
   it('distinguishes a missing file/directory from inaccessible repository or ref', async () => {
@@ -125,7 +126,7 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
     if (type === 'github')
       expect(calls[2]!.body.sha).toBe('latest-version')
     else
-      expect(calls[2]!.body.actions).toEqual([{ action: 'delete', file_path: 'stores/demo.json', last_commit_id: 'latest-version' }])
+      expect(calls[2]!.body.actions).toEqual([{ action: 'delete', file_path: 'stores/demo/env.json', last_commit_id: 'latest-version' }])
     expect(calls.every(call => call.body.branch === 'release/中文 name')).toBe(true)
     expect(JSON.parse(Buffer.from(calls[1]!.body.content!, 'base64').toString()).vars).toEqual(store.vars)
   })

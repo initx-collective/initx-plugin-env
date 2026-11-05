@@ -2,10 +2,19 @@ import { assertSafePath } from '../storage/path'
 import { assertValidFileId } from './refs'
 
 /**
- * 文件对象固定放在 `<path>/_files/<store>/<id>`：
- * - 与 store 同级，跟着已有的 `path` 配置走，不引入第二个配置项；
- * - `listStores` 只取 `.json`，`_files` 目录天然被忽略。
+ * 新版每个 store 一个目录：
+ *
+ *   <path>/<store>/env.json
+ *   <path>/<store>/_files/<id>
+ *
+ * 旧版是扁平文件：
+ *
+ *   <path>/<store>.json
+ *   <path>/_files/<store>/<id>
+ *
+ * 旧路径只用于读取回退与一次性迁移。
  */
+export const STORE_FILE_NAME = 'env.json'
 export const FILES_DIR = '_files'
 
 function normalizeBase(basePath: string): string {
@@ -14,7 +23,7 @@ function normalizeBase(basePath: string): string {
 
 export function storeFilesDir(basePath: string, store: string): string {
   const base = normalizeBase(basePath)
-  const path = base ? `${base}/${FILES_DIR}/${store}` : `${FILES_DIR}/${store}`
+  const path = base ? `${base}/${store}/${FILES_DIR}` : `${store}/${FILES_DIR}`
 
   assertSafePath(path)
 
@@ -25,6 +34,27 @@ export function storeFilesPath(basePath: string, store: string, id: string): str
   assertValidFileId(id)
 
   const path = `${storeFilesDir(basePath, store)}/${id}`
+
+  assertSafePath(path)
+
+  return path
+}
+
+/** 旧版文件目录：`<path>/_files/<store>` */
+export function legacyStoreFilesDir(basePath: string, store: string): string {
+  const base = normalizeBase(basePath)
+  const path = base ? `${base}/${FILES_DIR}/${store}` : `${FILES_DIR}/${store}`
+
+  assertSafePath(path)
+
+  return path
+}
+
+/** 旧版文件：`<path>/_files/<store>/<id>` */
+export function legacyStoreFilesPath(basePath: string, store: string, id: string): string {
+  assertValidFileId(id)
+
+  const path = `${legacyStoreFilesDir(basePath, store)}/${id}`
 
   assertSafePath(path)
 

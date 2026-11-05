@@ -6,6 +6,8 @@
 > `.initx-env.json`、凭据隔离及 GitLab CE 15.9.4 的实现与验收状态以
 > [存储适配器实现记录](gitlab-storage-implementation.md) 和 README 为准。
 > GitHub Secrets 的只写不读限制只适用于该目标，不代表所有 CI 平台都不能读取变量。
+> 2026-11-05 更新：store 已从扁平 `<path>/<store>.json` 改为目录 `<path>/<store>/env.json`，
+> 文件对象在 `<path>/<store>/_files/<id>`；旧布局首次写入时自动迁移。
 
 > 把「本地 `.env` / CI secrets」的唯一真相源放在**一个私有 GitHub 仓库**里，
 > 插件负责两个投影：**拉到本地** 和 **写进 CI**。
@@ -32,7 +34,7 @@ CI 永远是单向投影。这不是偷懒，是物理限制 —— 任何工具
 | `env-config setup\|set\|get\|list\|rm\|status` | — | vault 的 `repo/token/branch/path`；形状对齐 cp 的 `cp-config`；token 一律脱敏 |
 | `env list` | — | 列仓库里的 store |
 | `env pull [store]` | 仓库 → 本地 `.env` | 无名字就列出来选；目标文件同样列出来选 |
-| `env set <store> K=V ...` | 本地 → 仓库（单键） | store 名**就是文件名** → `stores/<store>.json` |
+| `env set <store> K=V ...` | 本地 → 仓库（单键） | store 名**就是目录名** → `stores/<store>/env.json` |
 | `env push <store>` | 本地 → 仓库（批量） | 从 `.env` 反向更新 store，`--prune` / `--force` |
 | `env setup [store]` | 仓库 → **当前环境** | CI 写 `$GITHUB_ENV` + `::add-mask::`；本地打到 stdout |
 | `env run <store> -- <command> [...args]` | 仓库 → **子进程** | 原值注入，继承 stdio/cwd，传递退出状态与中断；不落秘密文件 |
@@ -106,7 +108,7 @@ CI 永远是单向投影。这不是偷懒，是物理限制 —— 任何工具
 ## 7. v1 验收清单
 
 - [ ] `env-config set repo/token` → `env-config status` 打 `***` 并报告连通性
-- [ ] `env set demo A=1 B=2` → 仓库出现 `stores/demo.json`；再 `set A=9` 只改 A
+- [ ] `env set demo A=1 B=2` → 仓库出现 `stores/demo/env.json`；再 `set A=9` 只改 A
 - [ ] `env pull`（多个 store）→ 能选 store、选 `.env`；同名键更新、其它键与注释不变
 - [ ] `env pull` 幂等：第二次跑报"无需改动"，且文件字节不变
 - [ ] `env push --from .env.local` → 反向更新；远端独有的键保留；`--prune` 才删

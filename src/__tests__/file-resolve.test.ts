@@ -47,7 +47,7 @@ const utf8Key = encoder.encode('-----BEGIN KEY-----\nline\n-----END KEY-----\n')
 describe('resolveStoreVars', () => {
   it('解析 UTF-8 文件并标记需要强制引号的键', async () => {
     const store = makeStore({ KEY: '${file-key}', PLAIN: 'x' }, { key: { bytes: utf8Key } })
-    const resolved = await resolveStoreVars(makeClient({ 'stores/_files/demo/key': utf8Key }), 'stores', 'demo', store)
+    const resolved = await resolveStoreVars(makeClient({ 'stores/demo/_files/key': utf8Key }), 'stores', 'demo', store)
     expect(resolved.vars).toEqual({ KEY: '-----BEGIN KEY-----\nline\n-----END KEY-----\n', PLAIN: 'x' })
     expect([...resolved.fileKeys]).toEqual(['KEY'])
   })
@@ -55,22 +55,22 @@ describe('resolveStoreVars', () => {
   it('保留文件内容里的 BOM', async () => {
     const bytes = new Uint8Array([0xEF, 0xBB, 0xBF, ...encoder.encode('abc')])
     const store = makeStore({ A: '${file-a}' }, { a: { bytes } })
-    const resolved = await resolveStoreVars(makeClient({ 'stores/_files/demo/a': bytes }), 'stores', 'demo', store)
+    const resolved = await resolveStoreVars(makeClient({ 'stores/demo/_files/a': bytes }), 'stores', 'demo', store)
     expect(resolved.vars.A).toBe('\uFEFFabc')
   })
 
   it('encoding: base64 注入 base64 文本', async () => {
     const bytes = new Uint8Array([0, 1, 2, 255])
     const store = makeStore({ BIN: '${file-bin}' }, { bin: { bytes, encoding: 'base64' } })
-    const resolved = await resolveStoreVars(makeClient({ 'stores/_files/demo/bin': bytes }), 'stores', 'demo', store)
+    const resolved = await resolveStoreVars(makeClient({ 'stores/demo/_files/bin': bytes }), 'stores', 'demo', store)
     expect(resolved.vars.BIN).toBe(Buffer.from(bytes).toString('base64'))
   })
 
   it('同一个 id 只下载一次', async () => {
     const reads: string[] = []
     const store = makeStore({ A: '${file-key}', B: '${file-key}' }, { key: { bytes: utf8Key } })
-    const resolved = await resolveStoreVars(makeClient({ 'stores/_files/demo/key': utf8Key }, path => reads.push(path)), 'stores', 'demo', store)
-    expect(reads).toEqual(['stores/_files/demo/key'])
+    const resolved = await resolveStoreVars(makeClient({ 'stores/demo/_files/key': utf8Key }, path => reads.push(path)), 'stores', 'demo', store)
+    expect(reads).toEqual(['stores/demo/_files/key'])
     expect(resolved.vars.A).toBe(resolved.vars.B)
   })
 
@@ -81,10 +81,10 @@ describe('resolveStoreVars', () => {
       b: { bytes: encoder.encode('b') }
     })
     const resolved = await resolveStoreVars(makeClient({
-      'stores/_files/demo/a': encoder.encode('a'),
-      'stores/_files/demo/b': encoder.encode('b')
+      'stores/demo/_files/a': encoder.encode('a'),
+      'stores/demo/_files/b': encoder.encode('b')
     }, path => reads.push(path)), 'stores', 'demo', store, { keys: ['A'] })
-    expect(reads).toEqual(['stores/_files/demo/a'])
+    expect(reads).toEqual(['stores/demo/_files/a'])
     expect(resolved.vars).toMatchObject({ A: 'a', B: '${file-b}' })
     expect([...resolved.fileKeys]).toEqual(['A'])
   })
@@ -92,7 +92,7 @@ describe('resolveStoreVars', () => {
   it('把单文件上限透传给适配器', async () => {
     let seen: number | undefined
     const store = makeStore({ A: '${file-a}' }, { a: { bytes: encoder.encode('a') } })
-    await resolveStoreVars(makeClient({ 'stores/_files/demo/a': encoder.encode('a') }, (_path, options) => {
+    await resolveStoreVars(makeClient({ 'stores/demo/_files/a': encoder.encode('a') }, (_path, options) => {
       seen = options?.maxBytes
     }), 'stores', 'demo', store, { maxBytes: 123 })
     expect(seen).toBe(123)
@@ -100,8 +100,8 @@ describe('resolveStoreVars', () => {
 
   it.each([
     ['missing-file', {}],
-    ['size-mismatch', { 'stores/_files/demo/a': encoder.encode('ab') }],
-    ['checksum-mismatch', { 'stores/_files/demo/a': encoder.encode('b') }]
+    ['size-mismatch', { 'stores/demo/_files/a': encoder.encode('ab') }],
+    ['checksum-mismatch', { 'stores/demo/_files/a': encoder.encode('b') }]
   ] as const)('失败类型 %s', async (code, files) => {
     const store = makeStore({ A: '${file-a}' }, { a: { bytes: encoder.encode('a') } })
     const error = await resolveStoreVars(makeClient(files), 'stores', 'demo', store).catch(error => error)
@@ -112,7 +112,7 @@ describe('resolveStoreVars', () => {
   it('非法 UTF-8 提示改用 base64', async () => {
     const bytes = new Uint8Array([0xFF, 0xFE])
     const store = makeStore({ A: '${file-a}' }, { a: { bytes } })
-    const error = await resolveStoreVars(makeClient({ 'stores/_files/demo/a': bytes }), 'stores', 'demo', store).catch(error => error)
+    const error = await resolveStoreVars(makeClient({ 'stores/demo/_files/a': bytes }), 'stores', 'demo', store).catch(error => error)
     expect(error).toMatchObject({ code: 'invalid-utf8' })
     expect(String(error)).toContain('base64')
   })

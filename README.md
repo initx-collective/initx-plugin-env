@@ -2,7 +2,7 @@
 
 `initx` plugin to manage env vars and secrets from a private GitHub or GitLab repository.
 
-One private repository holds **one JSON file per store** (`stores/<name>.json`). Pull a store into a
+One private repository holds **one directory per store** (`stores/<name>/env.json`). Pull a store into a
 local `.env`, inject it into a child process or CI job, or write it into GitHub Actions secrets.
 
 ```bash
@@ -205,7 +205,7 @@ file next to itself and put a short reference in `vars`:
 }
 ```
 
-The file lives at `<path>/_files/<store>/<id>`; the path is derived, not stored. `encoding`
+The file lives at `<path>/<store>/_files/<id>`; the path is derived, not stored. `encoding`
 controls the injected form only — the file is always stored as raw bytes.
 
 Rules:
@@ -382,7 +382,7 @@ Arbitrary response messages are never forwarded to the caller or printed.
 ## Store format
 
 ```jsonc
-// stores/mail-peon-publish.json
+// stores/mail-peon-publish/env.json
 {
   "schema": 1,
   "vars": {
@@ -399,6 +399,10 @@ Arbitrary response messages are never forwarded to the caller or printed.
   }
 }
 ```
+
+Each store is a directory: `stores/<store>/env.json` plus `stores/<store>/_files/<id>`. Older flat
+stores (`stores/<store>.json` with `stores/_files/<store>/`) are still readable; the next write
+migrates the JSON and its files into the directory automatically.
 
 ## Good to know
 

@@ -8,7 +8,8 @@
 
 设计文档里的范围已全部实现：
 
-- store 保持 **schema 1**，新增可选 `files`；路径按 `<path>/_files/<store>/<id>` 推导，不落库。
+- store 保持 **schema 1**，新增可选 `files`；目录为 `<path>/<store>/env.json`，文件按
+  `<path>/<store>/_files/<id>` 推导，不落库。
 - `${file-<id>}` 整值引用；未声明的引用硬失败，不做字面量兜底。
 - `env file add / ls / cat / pull / rm / check` 六个子命令。
 - `pull / setup / run / apply / --json` 统一解引用；`push` 零下载比对并保护引用。
@@ -20,7 +21,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `src/files/refs.ts` | 引用语法、id 规则、声明一致性检查 |
-| `src/files/paths.ts` | `_files/<store>/<id>` 路径推导 |
+| `src/files/paths.ts` | `<store>/_files/<id>` 路径推导与旧路径回退 |
+| `src/files/migrate.ts` | 旧版扁平 store / `_files` 迁移 |
 | `src/files/limits.ts` | 单文件 / 内联 / 环境变量限额 |
 | `src/files/read.ts` | 读取 + 字节数 + sha256 校验 |
 | `src/files/resolve.ts` | 解引用、并发上限、base64 / UTF-8 解码 |
@@ -44,7 +46,7 @@
 ```text
 pnpm lint       通过
 pnpm typecheck  通过
-pnpm test       24 个文件，317 通过 / 3 跳过
+pnpm test       25 个文件，318 通过 / 3 跳过
 pnpm build      成功（dist/index.mjs 约 75 kB）
 ```
 
@@ -58,6 +60,7 @@ pnpm build      成功（dist/index.mjs 约 75 kB）
 - `env-push.test.ts`：保留引用、`--update-files`、`--inline`、`--prune`、共用 id 冲突。
 - `commands-regression.test.ts` / `command-output.test.ts`：pull / setup 解引用、JSON 纯净性、错误边界。
 - `http-e2e.test.ts`：本地回环 HTTP + 真实 `fetch`，跑通 add / pull / file pull / check / push --update-files。
+- `store-migration.test.ts`：旧版 `demo.json` + `_files` 首次写入迁移到 `demo/env.json` + `demo/_files`。
 
 打包产物冒烟使用内存 GitHub Contents 模拟器跑通：
 

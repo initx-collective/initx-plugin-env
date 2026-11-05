@@ -52,10 +52,10 @@ describe('文件引用语法', () => {
 })
 
 describe('文件对象路径', () => {
-  it('固定为 <path>/_files/<store>/<id>', () => {
-    expect(storeFilesPath('stores', 'demo', 'deploy-key')).toBe('stores/_files/demo/deploy-key')
-    expect(storeFilesPath('', 'demo', 'deploy-key')).toBe('_files/demo/deploy-key')
-    expect(storeFilesPath('/stores/', 'demo', 'deploy-key')).toBe('stores/_files/demo/deploy-key')
+  it('固定为 <path>/<store>/_files/<id>', () => {
+    expect(storeFilesPath('stores', 'demo', 'deploy-key')).toBe('stores/demo/_files/deploy-key')
+    expect(storeFilesPath('', 'demo', 'deploy-key')).toBe('demo/_files/deploy-key')
+    expect(storeFilesPath('/stores/', 'demo', 'deploy-key')).toBe('stores/demo/_files/deploy-key')
   })
 
   it('拒绝不安全的 id 与目录', () => {

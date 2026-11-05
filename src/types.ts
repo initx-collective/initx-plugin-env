@@ -18,7 +18,7 @@ export type FileEncoding = (typeof FILE_ENCODINGS)[number]
 
 /**
  * `files` 里一个文件对象的元数据。路径不存，固定按
- * `<path>/_files/<store>/<id>` 推导。
+ * `<path>/<store>/_files/<id>` 推导。
  *
  * - `sha256` 是内容哈希：解引用校验、push 零下载比对都靠它；
  * - `bytes` 让 48 KB / 1 MiB / 32 KB 这些上限在下载前就能预检；
@@ -47,7 +47,7 @@ export const secretTargetSchema = z.object({
 export type SecretTarget = z.infer<typeof secretTargetSchema>
 
 /**
- * 仓库里一个 store 文件（`<path>/<name>.json`）的结构。
+ * 仓库里一个 store（`<path>/<name>/env.json`）的结构。
  *
  * 刻意保持"平"：值一律是字符串，**不做类型转换**（`.env` 里本来就只有字符串）。
  * `targets` 是可选的路由信息，只是省掉交互里的选择步骤，不参与数据本身。
@@ -72,7 +72,7 @@ export function createEmptyStore(): StoreFile {
 }
 
 /**
- * store 名 → 文件名 `<name>.json`。
+ * store 名 → 目录名 `<name>/env.json`。
  *
  * 规则照 initx-plugin-cp 的 `validateKey`（GitHub Contents API 的路径要求），
  * 另外顺手允许用户把 `.json` 后缀写进来（会去掉）。

@@ -46,7 +46,7 @@ describe('原有命令回归（仅模拟 GitHub，不执行写接口）', () => 
   it('apply --repo 仍是目标 Actions 仓库，vault 从环境解析', async () => {
     await handleEnvApply({ store: { repo: 'local/vault' }, options: createCliOptions({ 'repo': 'target/actions', 'dry-run': true }) }, ['demo'])
     expect(requests).toHaveLength(1)
-    expect(requests[0]!.url).toContain('/repos/fake/vault/contents/test-stores/demo.json')
+    expect(requests[0]!.url).toContain('/repos/fake/vault/contents/test-stores/demo/env.json')
     expect(logger.info.mock.calls.flat().join('\n')).toContain('target/actions')
   })
 
@@ -91,7 +91,7 @@ describe('原有命令回归（仅模拟 GitHub，不执行写接口）', () => 
       requests.push({ url: String(url), init })
       if (init?.method)
         return Response.json({ content: { sha: 'written' } })
-      if (String(url).includes('/contents/test-stores/_files/demo/key'))
+      if (String(url).includes('/contents/test-stores/demo/_files/key') || String(url).includes('/contents/test-stores/_files/demo/key'))
         return Response.json({ type: 'file', sha: 'file', encoding: 'base64', content: keyBytes.toString('base64'), size: keyBytes.byteLength })
       return Response.json({ type: 'file', sha: 'test', encoding: 'base64', content: Buffer.from(JSON.stringify(fileStore)).toString('base64') })
     }))

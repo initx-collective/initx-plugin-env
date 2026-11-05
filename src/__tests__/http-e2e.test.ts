@@ -59,8 +59,8 @@ function startServer(): Promise<string> {
     }
 
     const path = url.pathname.slice(prefix.length).split('/').map(decodeURIComponent).join('/')
-    const storePath = 'test-stores/demo.json'
-    const filePrefix = 'test-stores/_files/demo/'
+    const storePath = 'test-stores/demo/env.json'
+    const filePrefix = 'test-stores/demo/_files/'
 
     if (request.method === 'GET') {
       if (path === storePath) {

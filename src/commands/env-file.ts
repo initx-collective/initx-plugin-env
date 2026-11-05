@@ -7,8 +7,8 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { logger } from '@initx-plugin/utils'
 import { maxFileBytes } from '../files/limits'
-import { storeFilesDir, storeFilesPath } from '../files/paths'
-import { readVerifiedFile } from '../files/read'
+import { legacyStoreFilesDir, storeFilesDir, storeFilesPath } from '../files/paths'
+import { readStoreFileBytes, readVerifiedFile } from '../files/read'
 import { assertValidFileId, collectVarFileRefs, FileRefError, formatFileRef, keysReferencing, parseFileRef, slugifyFileId } from '../files/refs'
 import { resolveStoreVars } from '../files/resolve'
 import { StorageSizeError } from '../storage/errors'
@@ -180,7 +180,8 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
       name,
       store,
       `env: add file ${id} for ${key} in ${name}`,
-      existing?.version
+      existing?.version,
+      existing?.legacy
     )
   }
 
@@ -357,7 +358,7 @@ async function runRm(ctx: EnvCommandContext, args: string[]): Promise<void> {
       delete ref.store.files
   }
 
-  await writeStore(client, config.path, name, ref.store, `env: rm ${key} in ${name}`, ref.version)
+  await writeStore(client, config.path, name, ref.store, `env: rm ${key} in ${name}`, ref.version, ref.legacy)
 
   if (remaining.length) {
     logger.warn(colorText(`文件 "${id}" 仍被 ${remaining.join('、')} 引用，保留文件本体`, 'yellow'))
@@ -418,13 +419,13 @@ async function runCheck(ctx: EnvCommandContext, args: string[]): Promise<void> {
       problems.push({ type: 'dangling-metadata', id })
 
     try {
-      const current = await client.readBytes(storeFilesPath(config.path, name, id), { maxBytes: maxFileBytes() })
+      const current = await readStoreFileBytes(client, config.path, name, id, { maxBytes: maxFileBytes() })
 
       if (!current)
         problems.push({ type: 'missing-file', id })
-      else if (current.bytes.byteLength !== entry.bytes)
-        problems.push({ type: 'size-mismatch', id, expected: entry.bytes, actual: current.bytes.byteLength })
-      else if (sha256(current.bytes) !== entry.sha256)
+      else if (current.file.bytes.byteLength !== entry.bytes)
+        problems.push({ type: 'size-mismatch', id, expected: entry.bytes, actual: current.file.bytes.byteLength })
+      else if (sha256(current.file.bytes) !== entry.sha256)
         problems.push({ type: 'checksum-mismatch', id })
     }
     catch (error) {
@@ -435,11 +436,17 @@ async function runCheck(ctx: EnvCommandContext, args: string[]): Promise<void> {
     }
   }
 
-  const listed = await client.list(storeFilesDir(config.path, name))
+  const listed = await Promise.all([
+    client.list(storeFilesDir(config.path, name)),
+    client.list(legacyStoreFilesDir(config.path, name))
+  ])
+  const seen = new Set<string>()
 
-  for (const item of listed) {
-    if (item.kind === 'file' && !(item.name in files))
+  for (const item of listed.flat()) {
+    if (item.kind === 'file' && !(item.name in files) && !seen.has(item.name)) {
+      seen.add(item.name)
       problems.push({ type: 'orphan-file', id: item.name })
+    }
   }
 
   if (ctx.options.boolean('json')) {

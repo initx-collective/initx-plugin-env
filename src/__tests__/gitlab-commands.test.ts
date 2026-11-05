@@ -70,7 +70,7 @@ describe('gitLab command regressions', () => {
       const url = new URL(value)
       if (init.method) {
         writes.push(init)
-        expect(url.pathname).toContain(type === 'github' ? '/contents/stores/demo.json' : '/repository/files/stores%2Fdemo.json')
+        expect(url.pathname).toContain(type === 'github' ? '/contents/stores/demo/env.json' : '/repository/files/stores%2Fdemo%2Fenv.json')
         expect(init.method).toBe(type === 'github' ? 'PUT' : 'POST')
         const body = JSON.parse(init.body)
         expect(body.branch).toBe('main')

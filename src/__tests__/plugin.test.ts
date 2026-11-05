@@ -64,12 +64,12 @@ describe('名字与路径校验', () => {
     expect(() => normalizeStoreName('  ')).toThrow()
   })
 
-  it('storeFilePath 拼出 <path>/<name>.json 并挡掉越界路径', () => {
-    expect(storeFilePath('stores', 'demo')).toBe('stores/demo.json')
-    expect(storeFilePath('', 'demo')).toBe('demo.json')
-    expect(storeFilePath('/stores/', 'demo.json')).toBe('stores/demo.json')
+  it('storeFilePath 拼出 <path>/<name>/env.json 并挡掉越界路径', () => {
+    expect(storeFilePath('stores', 'demo')).toBe('stores/demo/env.json')
+    expect(storeFilePath('', 'demo')).toBe('demo/env.json')
+    expect(storeFilePath('/stores/', 'demo.json')).toBe('stores/demo/env.json')
     // 配置里多写的斜杠会被归一化，但 `..` 这类越界路径直接拒掉
-    expect(storeFilePath('/abs', 'demo')).toBe('abs/demo.json')
+    expect(storeFilePath('/abs', 'demo')).toBe('abs/demo/env.json')
     expect(() => storeFilePath('..', 'demo')).toThrow(/\.\./)
     expect(() => storeFilePath('a/../b', 'demo')).toThrow(/\.\./)
   })
