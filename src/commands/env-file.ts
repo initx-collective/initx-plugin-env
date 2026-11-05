@@ -1,13 +1,17 @@
-import type { FileEncoding } from '../types'
+import type { FileEncoding, FileEntry } from '../types'
 import type { EnvCommandContext } from './env'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import process from 'node:process'
 import { logger } from '@initx-plugin/utils'
 import { maxFileBytes } from '../files/limits'
-import { storeFilesPath } from '../files/paths'
-import { assertValidFileId, formatFileRef, keysReferencing, parseFileRef, slugifyFileId } from '../files/refs'
+import { storeFilesDir, storeFilesPath } from '../files/paths'
+import { readVerifiedFile } from '../files/read'
+import { assertValidFileId, collectVarFileRefs, formatFileRef, keysReferencing, parseFileRef, slugifyFileId } from '../files/refs'
+import { resolveStoreVars } from '../files/resolve'
+import { StorageSizeError } from '../storage/errors'
 import { readStore, serializeStore, writeStore } from '../store'
 import { createEmptyStore, isValidEnvKey, normalizeStoreName } from '../types'
 import { colorText } from '../utils/terminal'
@@ -29,8 +33,23 @@ export async function handleEnvFile(ctx: EnvCommandContext, args: string[]): Pro
     case 'add':
       return runAdd(ctx, rest)
 
+    case 'ls':
+      return runList(ctx, rest)
+
+    case 'cat':
+      return runCat(ctx, rest)
+
+    case 'pull':
+      return runPull(ctx, rest)
+
+    case 'rm':
+      return runRm(ctx, rest)
+
+    case 'check':
+      return runCheck(ctx, rest)
+
     default:
-      throw new Error(`未知子命令 "${action}"，可用：add（ls/cat/pull/rm/check 即将提供）`)
+      throw new Error(`未知子命令 "${action}"，可用：add | ls | cat | pull | rm | check`)
   }
 }
 
@@ -167,4 +186,248 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
 
   logger.success(colorText(`store "${name}" 已更新：${key} → ${formatFileRef(id)}`, 'green'))
   logger.info(`  ${colorText(path, 'blue')} · ${bytes.byteLength} 字节 · sha256 ${digest.slice(0, 8)}${encoding === 'base64' ? ' · base64' : ''}`)
+}
+
+async function openStore(ctx: EnvCommandContext, rawName?: string) {
+  if (!rawName)
+    throw new Error('要指定 store 名（用 initx env list 查看）')
+
+  const name = normalizeStoreName(rawName)
+  const { config, client } = createClient(ctx)
+  const ref = await readStore(client, config.path, name)
+
+  if (!ref)
+    throw new Error(`仓库里没有 store "${name}"。用 initx env list 看看有哪些`)
+
+  return { name, config, client, ref }
+}
+
+function describeEntry(entry: FileEntry): string {
+  return `${entry.bytes} B · ${entry.encoding}${entry.mode ? ` · ${entry.mode}` : ''} · sha256 ${entry.sha256.slice(0, 8)}`
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+async function runList(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const { name, ref } = await openStore(ctx, args[0])
+  const refs = collectVarFileRefs(ref.store)
+  const used = new Set(refs.map(item => item.id))
+  const dangling = Object.keys(ref.store.files ?? {}).filter(id => !used.has(id))
+
+  if (!refs.length) {
+    logger.info(`store "${colorText(name, 'blue')}" 没有文件引用`)
+  }
+  else if (ctx.options.boolean('json')) {
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(refs.map(({ key, id }) => ({ key, id, ...ref.store.files![id] }))))
+  }
+  else {
+    logger.info(`store "${colorText(name, 'blue')}" 共 ${refs.length} 个文件引用：`)
+    for (const { key, id } of refs)
+      logger.info(`  ${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}  ${describeEntry(ref.store.files![id]!)}`)
+  }
+
+  if (dangling.length)
+    logger.warn(colorText(`另有 ${dangling.length} 个未被引用的文件条目：${dangling.join(', ')}（用 file check 查看）`, 'yellow'))
+}
+
+async function runCat(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const { name, config, client, ref } = await openStore(ctx, args[0])
+  const key = args[1]
+
+  if (!key)
+    throw new Error('用法：initx env file cat <store> KEY [--show]')
+
+  const id = parseFileRef(ref.store.vars[key] ?? '')
+
+  if (!id)
+    throw new Error(`${key} 不是文件引用`)
+
+  const entry = ref.store.files?.[id]
+
+  if (!entry)
+    throw new Error(`文件 "${id}" 没有元数据，store 不完整`)
+
+  if (!ctx.options.boolean('show')) {
+    logger.info(`${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}  ${describeEntry(entry)}`)
+    return
+  }
+
+  logger.warn(colorText('--show 会把注入值打到 stdout，注意日志采集', 'yellow'))
+  const resolved = await resolveStoreVars(client, config.path, name, ref.store, { keys: [key] })
+  // eslint-disable-next-line no-console
+  console.log(resolved.vars[key])
+}
+
+async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const { name, config, client, ref } = await openStore(ctx, args[0])
+  const dir = ctx.options.string('to-dir')
+
+  if (!dir)
+    throw new Error('用法：initx env file pull <store> --to-dir <dir> [--only KEY] [--force]')
+
+  const only = ctx.options.string('only')?.split(',').map(item => item.trim()).filter(Boolean)
+  const refs = collectVarFileRefs(ref.store).filter(item => !only || only.includes(item.key))
+
+  if (!refs.length)
+    throw new Error(`store "${name}" 没有可落盘的文件引用`)
+
+  await mkdir(dir, { recursive: true })
+  const written = new Set<string>()
+
+  for (const { key, id } of refs) {
+    if (written.has(id))
+      continue
+
+    const entry = ref.store.files![id]!
+    const target = join(dir, id)
+
+    if (!ctx.options.boolean('force') && await exists(target))
+      throw new Error(`目标文件已存在：${target}（加 --force 覆盖）`)
+
+    const file = await readVerifiedFile(client, config.path, name, id, entry)
+    await writeFile(target, file.bytes)
+
+    if (process.platform !== 'win32')
+      await chmod(target, Number.parseInt(entry.mode ?? '600', 8))
+
+    written.add(id)
+    logger.success(colorText(`${key} → ${target}`, 'green'))
+  }
+}
+
+async function runRm(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const { name, config, client, ref } = await openStore(ctx, args[0])
+  const key = args[1]
+
+  if (!key)
+    throw new Error('用法：initx env file rm <store> KEY [--keep-blob]')
+
+  const id = parseFileRef(ref.store.vars[key] ?? '')
+
+  if (!id)
+    throw new Error(`${key} 不是文件引用（普通值请用 set 修改）`)
+
+  const entry = ref.store.files?.[id]
+  const path = storeFilesPath(config.path, name, id)
+
+  delete ref.store.vars[key]
+
+  const remaining = keysReferencing(ref.store, id)
+
+  if (!remaining.length && ref.store.files) {
+    delete ref.store.files[id]
+    if (!Object.keys(ref.store.files).length)
+      delete ref.store.files
+  }
+
+  await writeStore(client, config.path, name, ref.store, `env: rm ${key} in ${name}`, ref.version)
+
+  if (remaining.length) {
+    logger.warn(colorText(`文件 "${id}" 仍被 ${remaining.join('、')} 引用，保留文件本体`, 'yellow'))
+    logger.success(colorText(`store "${name}" 已更新：删除 ${key} 的引用`, 'green'))
+    return
+  }
+
+  if (ctx.options.boolean('keep-blob')) {
+    logger.info(`保留文件本体 ${colorText(path, 'blue')}（check 会报孤儿）`)
+  }
+  else {
+    const current = await client.readBytes(path, { maxBytes: maxFileBytes() })
+
+    if (current) {
+      await client.remove(path, { expectedVersion: current.version, message: `env: rm file ${id} in ${name}` })
+    }
+    else {
+      logger.warn(colorText(`文件 "${id}" 已经不存在，只删了引用与元数据`, 'yellow'))
+    }
+  }
+
+  logger.success(colorText(`store "${name}" 已更新：删除 ${key}${entry ? '' : '（元数据原本缺失）'}`, 'green'))
+}
+
+interface CheckProblem {
+  type: 'undeclared-ref' | 'dangling-metadata' | 'missing-file' | 'size-mismatch' | 'checksum-mismatch' | 'orphan-file' | 'too-large'
+  id: string
+  key?: string
+  expected?: number
+  actual?: number
+}
+
+function describeProblem(problem: CheckProblem): string {
+  switch (problem.type) {
+    case 'undeclared-ref': return `${problem.key ?? ''} 引用了未声明的文件 "${problem.id}"`
+    case 'dangling-metadata': return `文件条目 "${problem.id}" 没有被任何键引用`
+    case 'missing-file': return `文件 "${problem.id}" 不存在`
+    case 'size-mismatch': return `文件 "${problem.id}" 大小不符（期望 ${problem.expected ?? 0}，实际 ${problem.actual ?? 0}）`
+    case 'checksum-mismatch': return `文件 "${problem.id}" 的 sha256 不符`
+    case 'orphan-file': return `文件 "${problem.id}" 没有被任何 files 条目登记`
+    case 'too-large': return `文件 "${problem.id}" 超过读取上限`
+  }
+}
+
+async function runCheck(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const { name, config, client, ref } = await openStore(ctx, args[0])
+  const problems: CheckProblem[] = []
+  const refs = collectVarFileRefs(ref.store)
+  const files = ref.store.files ?? {}
+
+  for (const { key, id } of refs) {
+    if (!files[id])
+      problems.push({ type: 'undeclared-ref', key, id })
+  }
+
+  for (const [id, entry] of Object.entries(files)) {
+    if (!refs.some(item => item.id === id))
+      problems.push({ type: 'dangling-metadata', id })
+
+    try {
+      const current = await client.readBytes(storeFilesPath(config.path, name, id), { maxBytes: maxFileBytes() })
+
+      if (!current)
+        problems.push({ type: 'missing-file', id })
+      else if (current.bytes.byteLength !== entry.bytes)
+        problems.push({ type: 'size-mismatch', id, expected: entry.bytes, actual: current.bytes.byteLength })
+      else if (sha256(current.bytes) !== entry.sha256)
+        problems.push({ type: 'checksum-mismatch', id })
+    }
+    catch (error) {
+      if (error instanceof StorageSizeError)
+        problems.push({ type: 'too-large', id })
+      else
+        throw error
+    }
+  }
+
+  const listed = await client.list(storeFilesDir(config.path, name))
+
+  for (const item of listed) {
+    if (item.kind === 'file' && !(item.name in files))
+      problems.push({ type: 'orphan-file', id: item.name })
+  }
+
+  if (ctx.options.boolean('json')) {
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify({ store: name, problems }, null, 2))
+  }
+  else {
+    for (const problem of problems)
+      logger.error(colorText(`  ${describeProblem(problem)}`, 'red'))
+
+    if (!problems.length)
+      logger.success(colorText(`store "${name}" check 通过`, 'green'))
+  }
+
+  if (problems.length) {
+    logger.error(colorText(`check: ${problems.length} 个问题`, 'red'))
+    process.exitCode = 1
+  }
 }

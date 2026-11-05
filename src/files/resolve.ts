@@ -1,10 +1,8 @@
 import type { StorageAdapter } from '../storage/types'
 import type { FileEntry, StoreFile } from '../types'
 import { Buffer } from 'node:buffer'
-import { createHash } from 'node:crypto'
-import { StorageSizeError } from '../storage/errors'
 import { maxFileBytes } from './limits'
-import { storeFilesPath } from './paths'
+import { readVerifiedFile } from './read'
 import { assertDeclaredRefs, collectVarFileRefs, FileRefError } from './refs'
 
 export interface ResolveOptions {
@@ -85,29 +83,7 @@ export async function resolveStoreVars(
 
   await mapLimit([...byId.keys()], CONCURRENCY, async (id) => {
     const current = byId.get(id)!
-    let file
-
-    try {
-      file = await client.readBytes(storeFilesPath(basePath, name, id), { maxBytes })
-    }
-    catch (error) {
-      if (error instanceof StorageSizeError)
-        throw new FileRefError('too-large', `文件 "${id}" 超过 ${maxBytes} 字节上限`)
-      throw error
-    }
-
-    if (!file)
-      throw new FileRefError('missing-file', `store "${name}" 的 ${current.key} 引用的文件 "${id}" 不存在（检查分支与路径）`)
-
-    if (file.bytes.byteLength !== current.entry.bytes) {
-      throw new FileRefError('size-mismatch', `文件 "${id}" 大小与元数据不符（期望 ${current.entry.bytes}，实际 ${file.bytes.byteLength}）`)
-    }
-
-    const digest = createHash('sha256').update(file.bytes).digest('hex')
-
-    if (digest !== current.entry.sha256)
-      throw new FileRefError('checksum-mismatch', `文件 "${id}" 的 sha256 与元数据不符，可能被手工改过`)
-
+    const file = await readVerifiedFile(client, basePath, name, id, current.entry, { maxBytes })
     values.set(id, decodeValue(current.entry, file.bytes, id))
   })
 
