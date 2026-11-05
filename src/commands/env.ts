@@ -7,11 +7,14 @@ import process from 'node:process'
 import { inquirer, logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
 import { resolveConfig } from '../config'
-import { assertEnvLimit, assertInlineLimit } from '../files/limits'
+import { assertEnvLimit, assertInlineLimit, maxFileBytes } from '../files/limits'
+import { storeFilesPath } from '../files/paths'
+import { analyzePush, hashBytes } from '../files/push'
+import { keysReferencing } from '../files/refs'
 import { resolveStoreVars } from '../files/resolve'
 import { isConflictError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
-import { applyVars, listStores, readStore, writeStore } from '../store'
+import { applyVars, listStores, readStore, serializeStore, writeStore } from '../store'
 import { createEmptyStore, isValidEnvKey, normalizeStoreName } from '../types'
 import { diffEnv, mergeEnv, parseEnv, readEnvFileIfExists, writeEnvFileWithBackup } from '../utils/envfile'
 import { injectEnv, isGitHubActions } from '../utils/gh-env'
@@ -280,7 +283,7 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const [rawName] = args
 
   if (!rawName)
-    throw new Error('用法：npx initx env push <store 名> [--from .env.local] [--prune] [--force]')
+    throw new Error('用法：npx initx env push <store 名> [--from .env.local] [--prune] [--force] [--update-files|--inline]')
 
   const name = normalizeStoreName(rawName)
   const from = ctx.options.string('from') ?? (await pickDefaultEnvFile())
@@ -289,28 +292,83 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   if (content === null)
     throw new Error(`找不到文件 "${from}"（用 --from 指定）`)
 
-  const vars = Object.fromEntries(parseEnv(content).pairs)
+  const local = Object.fromEntries(parseEnv(content).pairs)
 
-  if (!Object.keys(vars).length)
+  if (!Object.keys(local).length)
     throw new Error(`"${from}" 里没解析出任何 KEY=value`)
 
+  const updateFiles = ctx.options.boolean('update-files')
+  const inline = ctx.options.boolean('inline')
+
+  if (updateFiles && inline)
+    throw new Error('--update-files 与 --inline 不能同时使用')
+
+  const mode = updateFiles ? 'update-files' : inline ? 'inline' : 'error'
   const { config, client } = createClient(ctx)
   const existing = await readStore(client, config.path, name)
   const store = existing?.store ?? createEmptyStore()
-  const change = applyVars(store, vars)
+  const before = serializeStore(store)
+  const analysis = analyzePush(store, local, mode)
+
+  if (analysis.conflicts.length && mode === 'error') {
+    throw new Error(`这些引用键的本地内容与文件不同：${analysis.conflicts.join('、')}。
+  --update-files  重新上传本地内容并保留引用
+  --inline        改成普通值（删除文件条目）`)
+  }
+
+  const change = applyVars(store, analysis.updates)
+  change.unchanged.push(...analysis.unchanged)
+
+  for (const key of analysis.inline) {
+    store.vars[key] = local[key]!
+    change.updated.push(key)
+  }
+
   const removed: string[] = []
 
   if (ctx.options.boolean('prune')) {
     for (const key of Object.keys(store.vars)) {
-      if (!(key in vars)) {
+      if (!(key in local)) {
         delete store.vars[key]
         removed.push(key)
       }
     }
   }
 
-  if (!change.added.length && !change.updated.length && !removed.length) {
-    logger.info(`store "${colorText(name, 'blue')}" 无需改动（${colorText(from, 'blue')} 里的值都一样）`)
+  if (store.files) {
+    for (const id of Object.keys(store.files)) {
+      if (!keysReferencing(store, id).length)
+        delete store.files[id]
+    }
+    if (!Object.keys(store.files).length)
+      delete store.files
+  }
+
+  // 文件先写，store 后写；中途失败只会留下可被 check 发现的孤儿/漂移。
+  for (const update of analysis.fileUpdates) {
+    const limit = maxFileBytes()
+
+    if (update.bytes.byteLength > limit)
+      throw new Error(`文件 "${update.id}" 超过 ${limit} 字节上限`)
+
+    const path = storeFilesPath(config.path, name, update.id)
+    const current = await client.readBytes(path, { maxBytes: limit })
+
+    if (!current)
+      throw new Error(`文件 "${update.id}" 不存在，无法 --update-files`)
+
+    await client.writeBytes(path, update.bytes, {
+      condition: { kind: 'update', expectedVersion: current.version },
+      message: `env: update file ${update.id} (${update.key}) in ${name}`
+    })
+
+    const entry = store.files![update.id]!
+    entry.sha256 = hashBytes(update.bytes)
+    entry.bytes = update.bytes.byteLength
+  }
+
+  if (!analysis.fileUpdates.length && serializeStore(store) === before) {
+    logger.info(`store "${colorText(name, 'blue')}" 无需改动（${colorText(from, 'blue')} 里的值与当前内容一致）`)
     return
   }
 
@@ -328,7 +386,10 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
     await writeStore(client, config.path, name, store, message, latest.version)
   }
 
-  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}`, 'green'))
+  if (analysis.inline.length)
+    logger.warn(colorText(`--inline：这些键已改成普通值，文件条目已清理：${analysis.inline.join('、')}`, 'yellow'))
+
+  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}${analysis.fileUpdates.length ? ` · 文件 ${analysis.fileUpdates.length}` : ''}`, 'green'))
 }
 
 async function pickDefaultEnvFile(): Promise<string> {

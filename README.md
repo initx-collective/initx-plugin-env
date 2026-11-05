@@ -105,6 +105,8 @@ Legacy flat config remains GitHub config; its token is accepted only on the defa
 | `initx env setup [store]` | Inject a store into **this** environment (CI job or shell) |
 | `initx env run <store> -- <command> [...args]` | Inject a store directly into one child process and return its exit status |
 | `initx env apply <store> --repo o/r` | Write a store into a repo's GitHub Actions secrets |
+| `initx env file add <store> KEY --file <path>` | Upload a file and replace the value with `${file-<id>}` |
+| `initx env file ls/cat/pull/rm/check` | Inspect, materialize, delete and verify file objects |
 
 Command failures print only the error message through `logger.error` and exit with code 1, without a stack
 trace or minified source dump. A failed connectivity check in `env-config status` also exits
@@ -181,6 +183,65 @@ command argument lists. **Child output is inherited without masking**: a script 
 secrets. The parent environment, including inherited GitHub tokens, is retained. This is process
 injection for trusted scripts and stores, not an isolation sandbox or encrypted secret manager.
 The stdout form of `setup` remains intended for inspection/legacy use; use `run` for exact values.
+
+## File-backed variables
+
+Some values are files: SSH keys, certificates, `.p12` keystores, service-account JSON. Storing
+them as one long base64 string makes a store unreadable and unreviewable. A store can keep the
+file next to itself and put a short reference in `vars`:
+
+```jsonc
+{
+  "schema": 1,
+  "vars": { "DEPLOY_KEY": "${file-deploy-key}" },
+  "files": {
+    "deploy-key": {
+      "sha256": "…", // content hash, used for verification and push comparison
+      "bytes": 3243,
+      "encoding": "utf8", // utf8 (inject text) or base64 (inject base64 text)
+      "mode": "600" // only used by `file pull`
+    }
+  }
+}
+```
+
+The file lives at `<path>/_files/<store>/<id>`; the path is derived, not stored. `encoding`
+controls the injected form only — the file is always stored as raw bytes.
+
+Rules:
+
+- A reference must be the **whole value**. `prefix${file-x}` is not expanded, and `${...}` is
+  never otherwise expanded.
+- The id must be declared in `files`. An undeclared reference is a hard error; silently injecting
+  the literal `${file-x}` as a secret is worse than failing.
+- `pull` / `setup` / `run` / `apply` / `--json` resolve references. `pull` writes real values;
+  `setup` masks the resolved values; `run` injects them directly without a shell.
+- `push` compares local content with `bytes` + `sha256` **without downloading**. If it differs, the
+  command refuses by default: use `--update-files` to re-upload and keep the reference, or
+  `--inline` to turn the key into a literal and drop the file entry.
+- `file pull` writes raw bytes and applies `mode` on POSIX. It does not overwrite existing files
+  unless `--force` is given.
+- `file check` verifies four directions: missing/size/sha drift, undeclared references, orphan
+  files, and metadata not referenced by any key.
+
+```bash
+initx env file add acewill-slidev DEPLOY_KEY --file ~/.ssh/deploy_key
+initx env file add acewill-ios IOS_P12 --file ./dist.p12 --encoding base64 --mode 600
+initx env file ls acewill-slidev
+initx env file cat acewill-slidev DEPLOY_KEY --show
+initx env file pull acewill-slidev --to-dir ./.secrets
+initx env file check acewill-slidev
+initx env file rm acewill-slidev DEPLOY_KEY
+```
+
+Limits: 10 MB per file (`INITX_ENV_MAX_FILE_BYTES`), 1 MiB per value when `pull` writes `.env`
+(`INITX_ENV_MAX_INLINE_BYTES`), 32 KB per value for `setup` (hard failure), and 48 KB per GitHub
+Actions secret. Large files should be materialized with `file pull` and passed as paths; do not
+put them into environment variables. `run` maps `E2BIG` to the same advice.
+
+There is no `extract` and no `gc`. Existing base64 values are migrated by hand: decode one to a
+temporary file, run `file add ... --encoding base64`, then `file check`. Orphans left by a failed
+`rm` or an `--inline` are reported by `file check`.
 
 ## Configuration precedence
 
@@ -323,7 +384,11 @@ Arbitrary response messages are never forwarded to the caller or printed.
   "schema": 1,
   "vars": {
     "EXTENSION_ID": "abcdefghijklmnopabcdefghijklmnop",
-    "CHROME_REFRESH_TOKEN": "1//0g..."
+    "CHROME_REFRESH_TOKEN": "1//0g...",
+    "DEPLOY_KEY": "${file-deploy-key}"
+  },
+  "files": { // optional: file-backed variables
+    "deploy-key": { "sha256": "…", "bytes": 3243, "encoding": "utf8", "mode": "600" }
   },
   "targets": { // optional routing hints
     "envFiles": [".env.local"], // pull: skip the file picker
@@ -337,6 +402,8 @@ Arbitrary response messages are never forwarded to the caller or printed.
 - **Values are stored as plaintext JSON in v1.** The repo is private, but anything committed stays in
   git history forever — rotate the values if that repo ever becomes public. Encryption is planned and
   will be orthogonal to the command surface (dotenvx / sops + age).
+- **File contents are plaintext too.** `files` only moves a large value out of the JSON; it does not
+  encrypt it. `file check` detects size/sha drift, orphan files and metadata not used by any key.
 - **No local cache.** Values are fetched on every invocation. `pull` writes its target `.env` file
   and backup; `setup` may write `$GITHUB_ENV`; `run` does not persist fetched values.
 - **`apply` constraints** (GitHub's, not ours): secret values are write-only; a single secret is

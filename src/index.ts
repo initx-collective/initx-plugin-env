@@ -115,6 +115,8 @@ function printEnvHelp(): void {
                               --from .env.local  指定来源文件（默认 .env.local → .env）
                               --prune            删掉仓库里本地没有的键
                               --force            远端被改过时强制覆盖
+                              --update-files     引用键内容变化时重新上传，保留引用
+                              --inline           引用键改成普通值，删除文件条目
   setup [store]               把 store 注入**本次**运行的环境：
                               GitHub Actions 里写 $GITHUB_ENV（后续 step 可见）并自动脱敏
                               本地则打到 stdout（--stdout 强制；--json 输出 JSON）
@@ -130,6 +132,14 @@ function printEnvHelp(): void {
                               --encoding base64  注入 base64 文本（默认 utf8）
                               --mode 600         落盘权限提示（file pull 使用）
                               --dry-run          只报告，不上传
+  file ls <store>             列出文件引用与元数据
+  file cat <store> KEY [--show]
+                              查看单个引用；--show 才输出注入值
+  file pull <store> --to-dir <dir>
+                              把文件落盘（默认 600，不覆盖已有文件）
+  file rm <store> KEY [--keep-blob]
+                              删除引用与文件；别的键共用时保留文件
+  file check <store> [--json] 校验缺失 / 大小 / sha / 孤儿 / 悬空元数据
   run <store> -- cmd [args]   直接注入子进程，继承 stdio / cwd，传递退出状态
                               --token <pat>      临时凭据（CI 推荐 INITX_ENV_TOKEN）
 
