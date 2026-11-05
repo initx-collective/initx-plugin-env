@@ -234,6 +234,9 @@ initx env file check acewill-slidev
 initx env file rm acewill-slidev DEPLOY_KEY
 ```
 
+`--file -` reads the content from stdin. `file check` exits nonzero when it reports a problem, so it
+can be used as a CI gate.
+
 Limits: 10 MB per file (`INITX_ENV_MAX_FILE_BYTES`), 1 MiB per value when `pull` writes `.env`
 (`INITX_ENV_MAX_INLINE_BYTES`), 32 KB per value for `setup` (hard failure), and 48 KB per GitHub
 Actions secret. Large files should be materialized with `file pull` and passed as paths; do not
