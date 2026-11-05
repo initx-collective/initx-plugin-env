@@ -8,6 +8,13 @@ export function fileResponse(type: StorageType, content: string, version = 'file
   return Response.json({ type: 'file', sha: version, last_commit_id: version, encoding: 'base64', content: Buffer.from(content).toString('base64') })
 }
 
+function bytesResponse(type: StorageType, bytes: Uint8Array, version = 'file-commit') {
+  const content = Buffer.from(bytes).toString('base64')
+  return type === 'github'
+    ? Response.json({ type: 'file', sha: version, encoding: 'base64', content, size: bytes.byteLength })
+    : Response.json({ content, encoding: 'base64', last_commit_id: version, size: bytes.byteLength })
+}
+
 const text = JSON.stringify({ schema: 1, vars: { A: '原值\nline\r\n', EMPTY: '' } })
 const token = 'private-token-sentinel'
 
@@ -29,6 +36,45 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
     expect(request).toMatchObject({ redirect: 'error', signal: expect.any(AbortSignal) })
     expect(request.headers).toMatchObject(type === 'github' ? { Authorization: `Bearer ${token}` } : { 'PRIVATE-TOKEN': token })
     expect(request.headers).not.toHaveProperty(type === 'github' ? 'PRIVATE-TOKEN' : 'Authorization')
+  })
+
+  it('reads and writes raw bytes, preserving binary content', async () => {
+    const bytes = new Uint8Array([0, 159, 146, 150, 255])
+    const writes: { content: string, encoding?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url, init = {}) => {
+      if (init.method) {
+        writes.push(JSON.parse(init.body))
+        return new Response(null, { status: 200 })
+      }
+      return bytesResponse(type, bytes, 'binary-version')
+    }))
+    const storage = adapter(type)
+    const result = await storage.readBytes('stores/_files/demo/key')
+    expect(result?.version).toBe('binary-version')
+    expect(Array.from(result!.bytes)).toEqual([0, 159, 146, 150, 255])
+    await storage.writeBytes('stores/_files/demo/key', bytes, { condition: { kind: 'update', expectedVersion: 'binary-version' } })
+    expect(Buffer.from(writes[0]!.content, 'base64')).toEqual(Buffer.from(bytes))
+  })
+
+  it('falls back to the GitHub blob API when Contents omits content', async () => {
+    if (type !== 'github')
+      return
+    const payload = new Uint8Array([1, 2, 3, 4])
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      urls.push(String(url))
+      if (String(url).includes('/git/blobs/'))
+        return Response.json({ content: Buffer.from(payload).toString('base64'), encoding: 'base64', size: payload.byteLength })
+      return Response.json({ type: 'file', sha: 'blob-sha', encoding: 'none', content: '', size: payload.byteLength })
+    }))
+    const result = await adapter('github').readBytes('stores/_files/demo/key')
+    expect(Array.from(result!.bytes)).toEqual([1, 2, 3, 4])
+    expect(urls[1]).toContain('/git/blobs/blob-sha')
+  })
+
+  it('rejects a file above maxBytes before decoding', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => bytesResponse(type, new Uint8Array([1, 2, 3, 4]), 'large')))
+    await expect(adapter(type).readBytes('stores/_files/demo/key', { maxBytes: 3 })).rejects.toMatchObject({ name: 'StorageSizeError', limit: 3 })
   })
 
   it('lists only JSON files at the selected directory and supports repository root', async () => {
@@ -171,10 +217,12 @@ describe.each(['github', 'gitlab'] as const)('%s StorageAdapter contract', (type
 describe('capability checks', () => {
   it('reads a future read-only backend and rejects writes before dispatch', async () => {
     const storage: StorageAdapter = {
-      capabilities: { read: true, list: true, write: false, delete: false, conditionalWrite: false },
+      capabilities: { read: true, list: true, write: false, delete: false, conditionalWrite: false, readBytes: false, writeBytes: false },
       read: vi.fn(async () => ({ content: text, version: 'opaque' })),
+      readBytes: vi.fn(),
       list: vi.fn(async () => []),
       write: vi.fn(),
+      writeBytes: vi.fn(),
       remove: vi.fn()
     }
     expect((await readStore(storage, '', 'demo'))?.version).toBe('opaque')

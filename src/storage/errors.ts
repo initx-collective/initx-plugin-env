@@ -23,6 +23,14 @@ export function isConflictError(error: unknown): boolean {
   return error instanceof StorageError && error.code === 'conflict'
 }
 
+/** 读取前的体积闸；消息只带上限，不带内容或路径。 */
+export class StorageSizeError extends Error {
+  constructor(public readonly limit: number) {
+    super(`文件超过 ${limit} 字节上限`)
+    this.name = 'StorageSizeError'
+  }
+}
+
 export function httpError(response: Response): StorageError {
   const status = response.status
   const limited = status === 429 || (status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')))

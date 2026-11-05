@@ -1,6 +1,6 @@
-import type { RemoveOptions, StorageAdapter, StorageEntry, StorageLocation, StorageObject, WriteOptions } from './types'
+import type { ReadBytesOptions, RemoveOptions, StorageAdapter, StorageBytes, StorageEntry, StorageLocation, StorageObject, WriteOptions } from './types'
 import { Buffer } from 'node:buffer'
-import { httpError, StorageError } from './errors'
+import { httpError, StorageError, StorageSizeError } from './errors'
 import { requireOk, responseJson, storageFetch } from './http'
 import { assertSafePath, normalizeApiBaseUrl, validateStorageRepo } from './path'
 
@@ -14,7 +14,7 @@ export function githubHeaders(token: string): Record<string, string> {
 }
 
 export class GitHubStorageAdapter implements StorageAdapter {
-  readonly capabilities = { read: true, list: true, write: true, delete: true, conditionalWrite: true }
+  readonly capabilities = { read: true, list: true, write: true, delete: true, conditionalWrite: true, readBytes: true, writeBytes: true }
   private readonly base: string
   private readonly headers: Record<string, string>
 
@@ -67,6 +67,40 @@ export class GitHubStorageAdapter implements StorageAdapter {
     return { content: Buffer.from(file.content, 'base64').toString('utf8'), version: file.sha }
   }
 
+  async readBytes(path: string, options: ReadBytesOptions = {}): Promise<StorageBytes | null> {
+    assertSafePath(path)
+    const response = await storageFetch(this.url(path), { headers: this.headers })
+    if (response.status === 404 || await this.isEmptyRepository(response)) {
+      await this.checkTarget()
+      return null
+    }
+    requireOk(response)
+    const file = await responseJson<{ type?: string, sha?: string, content?: string, encoding?: string, size?: number }>(response)
+    if (!file || file.type !== 'file' || typeof file.sha !== 'string' || !file.sha)
+      throw new StorageError('validation')
+    if (typeof file.size === 'number' && options.maxBytes !== undefined && file.size > options.maxBytes)
+      throw new StorageSizeError(options.maxBytes)
+    if (file.size === 0)
+      return { bytes: new Uint8Array(), version: file.sha }
+    let base64 = typeof file.content === 'string' ? file.content : ''
+    if (file.encoding !== 'base64' || base64 === '') {
+      // Contents API 对 >1 MB 的文件返回 encoding: "none"、content: ""。
+      // 用文件 sha 走 Git Blobs API（≤100 MB），不依赖 download_url 的跨域重定向。
+      const blobResponse = await storageFetch(`${this.base}/git/blobs/${encodeURIComponent(file.sha)}`, { headers: this.headers })
+      requireOk(blobResponse)
+      const blob = await responseJson<{ content?: string, encoding?: string, size?: number }>(blobResponse)
+      if (!blob || typeof blob.content !== 'string' || blob.encoding !== 'base64')
+        throw new StorageError('validation')
+      if (typeof blob.size === 'number' && options.maxBytes !== undefined && blob.size > options.maxBytes)
+        throw new StorageSizeError(options.maxBytes)
+      base64 = blob.content
+    }
+    const bytes = Buffer.from(base64, 'base64')
+    if (options.maxBytes !== undefined && bytes.byteLength > options.maxBytes)
+      throw new StorageSizeError(options.maxBytes)
+    return { bytes, version: file.sha }
+  }
+
   async list(path: string): Promise<StorageEntry[]> {
     const response = await storageFetch(this.url(path), { headers: this.headers })
     if (response.status === 404 || await this.isEmptyRepository(response)) {
@@ -92,6 +126,25 @@ export class GitHubStorageAdapter implements StorageAdapter {
     })
     if ([404, 409, 422].includes(response.status)) {
       const current = await this.read(path)
+      if (condition.kind === 'create' ? current !== null : current?.version !== condition.expectedVersion)
+        throw new StorageError('conflict', response.status)
+    }
+    if (!response.ok)
+      throw httpError(response)
+  }
+
+  async writeBytes(path: string, bytes: Uint8Array, options: WriteOptions): Promise<void> {
+    assertSafePath(path)
+    const condition = options.condition
+    if (condition.kind !== 'create' && (condition.kind !== 'update' || !condition.expectedVersion))
+      throw new StorageError('validation')
+    const response = await storageFetch(this.url(path), {
+      method: 'PUT',
+      headers: { ...this.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch: this.location.branch, message: options.message || 'env: write file', content: Buffer.from(bytes).toString('base64'), ...(condition.kind === 'update' ? { sha: condition.expectedVersion } : {}) })
+    })
+    if ([404, 409, 422].includes(response.status)) {
+      const current = await this.readBytes(path)
       if (condition.kind === 'create' ? current !== null : current?.version !== condition.expectedVersion)
         throw new StorageError('conflict', response.status)
     }

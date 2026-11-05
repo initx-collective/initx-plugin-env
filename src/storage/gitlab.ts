@@ -1,8 +1,8 @@
 import type { GitLabOperation } from './debug'
-import type { RemoveOptions, StorageAdapter, StorageEntry, StorageLocation, StorageObject, WriteOptions } from './types'
+import type { ReadBytesOptions, RemoveOptions, StorageAdapter, StorageBytes, StorageEntry, StorageLocation, StorageObject, WriteOptions } from './types'
 import { Buffer } from 'node:buffer'
 import { accessLevel, storageDebug } from './debug'
-import { httpError, StorageError } from './errors'
+import { httpError, StorageError, StorageSizeError } from './errors'
 import { requireOk, responseJson, storageFetch } from './http'
 import { assertSafePath, normalizeApiBaseUrl, validateStorageRepo } from './path'
 
@@ -30,9 +30,19 @@ async function rejectLegacyPermission(response: Response): Promise<void> {
   }
 }
 
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength)
+    return false
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index])
+      return false
+  }
+  return true
+}
+
 /** Files/Tree/Commits APIs available in GitLab CE 15.9; no job-token or keyset features. */
 export class GitLabStorageAdapter implements StorageAdapter {
-  readonly capabilities = { read: true, list: true, write: true, delete: true, conditionalWrite: true }
+  readonly capabilities = { read: true, list: true, write: true, delete: true, conditionalWrite: true, readBytes: true, writeBytes: true }
   private readonly projectUrl: string
   private readonly base: string
   private readonly headers: Record<string, string>
@@ -164,6 +174,24 @@ export class GitLabStorageAdapter implements StorageAdapter {
     return { content: Buffer.from(file.content, 'base64').toString('utf8'), version: file.last_commit_id }
   }
 
+  async readBytes(path: string, options: ReadBytesOptions = {}): Promise<StorageBytes | null> {
+    const response = await this.request('file-read', `${this.fileUrl(path)}?${new URLSearchParams({ ref: this.location.branch })}`)
+    if (response.status === 404) {
+      await this.checkTarget()
+      return null
+    }
+    requireOk(response)
+    const file = await responseJson<{ content?: string, encoding?: string, last_commit_id?: string, size?: number }>(response)
+    if (!file || typeof file.content !== 'string' || file.encoding !== 'base64' || typeof file.last_commit_id !== 'string' || !file.last_commit_id)
+      throw new StorageError('validation')
+    if (typeof file.size === 'number' && options.maxBytes !== undefined && file.size > options.maxBytes)
+      throw new StorageSizeError(options.maxBytes)
+    const bytes = Buffer.from(file.content, 'base64')
+    if (options.maxBytes !== undefined && bytes.byteLength > options.maxBytes)
+      throw new StorageSizeError(options.maxBytes)
+    return { bytes, version: file.last_commit_id }
+  }
+
   async list(path: string): Promise<StorageEntry[]> {
     assertSafePath(path, true)
     const result: StorageEntry[] = []
@@ -207,6 +235,28 @@ export class GitLabStorageAdapter implements StorageAdapter {
         throw new StorageError('conflict', response.status)
       // GitLab returns 400 for empty commits. Equal content at the expected version is already successful.
       if (condition.kind === 'update' && response.status === 400 && current?.content === content)
+        return
+    }
+    if (!response.ok)
+      throw httpError(response)
+  }
+
+  async writeBytes(path: string, bytes: Uint8Array, options: WriteOptions): Promise<void> {
+    const condition = options.condition
+    if (condition.kind !== 'create' && (condition.kind !== 'update' || !condition.expectedVersion))
+      throw new StorageError('validation')
+    const response = await this.request(condition.kind === 'create' ? 'file-create' : 'file-update', this.fileUrl(path), {
+      method: condition.kind === 'create' ? 'POST' : 'PUT',
+      headers: this.headers,
+      body: JSON.stringify({ branch: this.location.branch, commit_message: options.message || 'env: write file', content: Buffer.from(bytes).toString('base64'), encoding: 'base64', ...(condition.kind === 'update' ? { last_commit_id: condition.expectedVersion } : {}) })
+    })
+    await this.rejectPermission(response)
+    if ([400, 404, 409, 422].includes(response.status)) {
+      const current = await this.readBytes(path)
+      if (condition.kind === 'create' ? current !== null : current?.version !== condition.expectedVersion)
+        throw new StorageError('conflict', response.status)
+      // GitLab returns 400 for empty commits; equal bytes at the expected version is already successful.
+      if (condition.kind === 'update' && response.status === 400 && current && sameBytes(current.bytes, bytes))
         return
     }
     if (!response.ok)
