@@ -126,7 +126,7 @@ describe('plugin command error boundary in a minified subprocess', () => {
     harness.env.INITX_TEST_HTTP_STATUS = '200'
     const result = await execute(['setup', 'demo'], { json: true })
     expect(result.code).toBe(0)
-    expect(JSON.parse(result.stdout.split('\n')[0]!)).toEqual({ A: 'dummy-remote-value' })
+    expect(result.stdout.trim()).toBe(JSON.stringify({ A: 'dummy-remote-value' }))
     expect(result.stderr).toBe('')
   })
 })

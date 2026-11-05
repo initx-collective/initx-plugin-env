@@ -432,7 +432,6 @@ async function runSetup(ctx: EnvCommandContext, args: string[]): Promise<void> {
     // 给 workflow 里 `fromJson(steps.x.outputs.vars)` 用
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(vars))
-    logger.info(`已输出 ${Object.keys(vars).length} 个变量（JSON）`)
     return
   }
 
