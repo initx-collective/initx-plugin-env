@@ -9,7 +9,7 @@ import { logger } from '@initx-plugin/utils'
 import { maxFileBytes } from '../files/limits'
 import { storeFilesDir, storeFilesPath } from '../files/paths'
 import { readVerifiedFile } from '../files/read'
-import { assertValidFileId, collectVarFileRefs, formatFileRef, keysReferencing, parseFileRef, slugifyFileId } from '../files/refs'
+import { assertValidFileId, collectVarFileRefs, FileRefError, formatFileRef, keysReferencing, parseFileRef, slugifyFileId } from '../files/refs'
 import { resolveStoreVars } from '../files/resolve'
 import { StorageSizeError } from '../storage/errors'
 import { readStore, serializeStore, writeStore } from '../store'
@@ -227,12 +227,18 @@ async function runList(ctx: EnvCommandContext, args: string[]): Promise<void> {
   }
   else if (ctx.options.boolean('json')) {
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify(refs.map(({ key, id }) => ({ key, id, ...ref.store.files![id] }))))
+    console.log(JSON.stringify(refs.map(({ key, id }) => {
+      const entry = ref.store.files?.[id]
+      return entry ? { key, id, ...entry } : { key, id, missing: true }
+    })))
   }
   else {
     logger.info(`store "${colorText(name, 'blue')}" 共 ${refs.length} 个文件引用：`)
-    for (const { key, id } of refs)
-      logger.info(`  ${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}  ${describeEntry(ref.store.files![id]!)}`)
+    for (const { key, id } of refs) {
+      const entry = ref.store.files?.[id]
+      const detail = entry ? describeEntry(entry) : colorText('缺少元数据（用 file check 查看）', 'yellow')
+      logger.info(`  ${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}  ${detail}`)
+    }
   }
 
   if (dangling.length)
@@ -287,7 +293,11 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
     if (written.has(id))
       continue
 
-    const entry = ref.store.files![id]!
+    const entry = ref.store.files?.[id]
+
+    if (!entry)
+      throw new FileRefError('unknown-ref', `${key} 引用了未声明的文件 "${id}"`)
+
     const target = join(dir, id)
 
     if (!ctx.options.boolean('force') && await exists(target))
@@ -302,6 +312,8 @@ async function runPull(ctx: EnvCommandContext, args: string[]): Promise<void> {
     written.add(id)
     logger.success(colorText(`${key} → ${target}`, 'green'))
   }
+
+  logger.info('提示：确认目标目录在 .gitignore 内，避免密钥被提交')
 }
 
 async function runRm(ctx: EnvCommandContext, args: string[]): Promise<void> {

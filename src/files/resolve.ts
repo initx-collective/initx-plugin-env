@@ -37,7 +37,7 @@ function decodeValue(entry: FileEntry, bytes: Uint8Array, id: string): string {
     return Buffer.from(bytes).toString('base64')
 
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
   }
   catch {
     throw new FileRefError('invalid-utf8', `文件 "${id}" 不是合法 UTF-8；二进制内容请用 --encoding base64`)

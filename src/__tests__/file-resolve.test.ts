@@ -52,6 +52,13 @@ describe('resolveStoreVars', () => {
     expect([...resolved.fileKeys]).toEqual(['KEY'])
   })
 
+  it('保留文件内容里的 BOM', async () => {
+    const bytes = new Uint8Array([0xEF, 0xBB, 0xBF, ...encoder.encode('abc')])
+    const store = makeStore({ A: '${file-a}' }, { a: { bytes } })
+    const resolved = await resolveStoreVars(makeClient({ 'stores/_files/demo/a': bytes }), 'stores', 'demo', store)
+    expect(resolved.vars.A).toBe('\uFEFFabc')
+  })
+
   it('encoding: base64 注入 base64 文本', async () => {
     const bytes = new Uint8Array([0, 1, 2, 255])
     const store = makeStore({ BIN: '${file-bin}' }, { bin: { bytes, encoding: 'base64' } })

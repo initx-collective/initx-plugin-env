@@ -200,6 +200,14 @@ describe('env file ls cat pull rm check', () => {
     expect(last.files).toBeUndefined()
   })
 
+  it('ls 与 pull 对未声明引用给出受控结果', async () => {
+    stub({ store: parseStore(JSON.stringify({ schema: 1, vars: { A: '${file-a}' } }), 'demo') })
+    await handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['ls', 'demo'])
+    expect(logger.info.mock.calls.flat().join('\n')).toContain('缺少元数据')
+
+    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ toDir: join(directory, 'out') }) }, ['pull', 'demo'])).rejects.toThrow(/未声明的文件/)
+  })
+
   it('rm 对普通值报错', async () => {
     stub({ store: fileStore({ A: 'plain' }, {}) })
     await expect(handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['rm', 'demo', 'A'])).rejects.toThrow(/不是文件引用/)
