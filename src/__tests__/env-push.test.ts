@@ -131,6 +131,19 @@ describe('push 与文件引用', () => {
     expect(store.files).toBeUndefined()
   })
 
+  it('共用 id 的键本地内容不一致时拒绝 --update-files', async () => {
+    stub({
+      store: storeWith(
+        { A: '${file-key}', B: '${file-key}' },
+        { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }
+      ),
+      file: keyBytes
+    })
+    const path = await envFile('A="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\nB=changed\n')
+    await expect(handleEnv({ store: {}, options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])).rejects.toThrow(/本地内容不一致/)
+    expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
+  })
+
   it('--prune 删除本地没有的引用键并清理文件条目', async () => {
     stub({ store: storeWith({ A: '${file-key}', B: 'plain' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('C=1\n')

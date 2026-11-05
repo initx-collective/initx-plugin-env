@@ -59,6 +59,8 @@ export function localBytes(value: string, encoding: FileEncoding): Uint8Array | 
 export function analyzePush(store: StoreFile, local: Record<string, string>, mode: PushMode): PushAnalysis {
   const analysis: PushAnalysis = { updates: {}, unchanged: [], conflicts: [], inline: [], fileUpdates: [] }
   const queued = new Map<string, Uint8Array>()
+  // 共用同一个 id 的键，本地内容必须一致；否则 --update-files 会让另一边变成旧值。
+  const seenLocal = new Map<string, Uint8Array>()
 
   for (const [key, value] of Object.entries(local)) {
     const id = parseFileRef(store.vars[key] ?? '')
@@ -74,6 +76,16 @@ export function analyzePush(store: StoreFile, local: Record<string, string>, mod
       throw new FileRefError('unknown-ref', `${key} 引用了未声明的文件 "${id}"`)
 
     const bytes = localBytes(value, entry.encoding)
+
+    if (mode === 'update-files' && bytes) {
+      const seen = seenLocal.get(id)
+
+      if (seen && !sameBytes(seen, bytes))
+        throw new Error(`文件 id "${id}" 被多个键引用，本地内容不一致；请用 --inline 分开处理`)
+
+      if (!seen)
+        seenLocal.set(id, bytes)
+    }
 
     if (bytes && bytes.byteLength === entry.bytes && hashBytes(bytes) === entry.sha256) {
       analysis.unchanged.push(key)
