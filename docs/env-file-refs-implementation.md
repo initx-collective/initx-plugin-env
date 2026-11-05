@@ -44,7 +44,7 @@
 ```text
 pnpm lint       通过
 pnpm typecheck  通过
-pnpm test       23 个文件，315 通过 / 3 跳过
+pnpm test       24 个文件，316 通过 / 3 跳过
 pnpm build      成功（dist/index.mjs 约 75 kB）
 ```
 
@@ -57,6 +57,7 @@ pnpm build      成功（dist/index.mjs 约 75 kB）
 - `env-file.test.ts`：add 幂等与覆盖、ls/cat/pull/rm/check、JSON 输出。
 - `env-push.test.ts`：保留引用、`--update-files`、`--inline`、`--prune`、共用 id 冲突。
 - `commands-regression.test.ts` / `command-output.test.ts`：pull / setup 解引用、JSON 纯净性、错误边界。
+- `http-e2e.test.ts`：本地回环 HTTP + 真实 `fetch`，跑通 add / pull / file pull / check / push --update-files。
 
 打包产物冒烟使用内存 GitHub Contents 模拟器跑通：
 
