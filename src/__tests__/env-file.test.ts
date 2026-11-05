@@ -166,6 +166,14 @@ describe('env file ls cat pull rm check', () => {
     expect(output).toHaveBeenCalledWith('-----BEGIN KEY-----\nABC\n-----END KEY-----\n')
   })
 
+  it('cat --show 对 base64 输出注入值而不是原始字节', async () => {
+    const bytes = new Uint8Array([0, 1, 2, 255])
+    stub({ store: fileStore({ BIN: '${file-bin}' }, { bin: { sha256: sha(bytes), bytes: bytes.byteLength, encoding: 'base64' } }), file: bytes })
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await handleEnvFile({ store: storeConfig, options: createCliOptions({ show: true }) }, ['cat', 'demo', 'BIN'])
+    expect(output).toHaveBeenCalledWith(Buffer.from(bytes).toString('base64'))
+  })
+
   it('pull 落盘原始字节，默认不覆盖', async () => {
     stub({ store: fileStore({ KEY: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength, mode: '600' } }), file: keyBytes })
     const out = join(directory, 'secrets')
