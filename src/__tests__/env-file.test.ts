@@ -103,6 +103,27 @@ describe('env file add', () => {
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
+  it('同键内容不同时覆盖文件并打印字节数', async () => {
+    const oldBytes = new TextEncoder().encode('old')
+    const newBytes = new TextEncoder().encode('new-key')
+    const store = parseStore(JSON.stringify({
+      schema: 1,
+      vars: { KEY: '${file-key}' },
+      files: { key: { sha256: sha(oldBytes), bytes: oldBytes.byteLength } }
+    }), 'demo')
+    stub({ store, file: oldBytes })
+    const file = await sourceFile(newBytes)
+    await handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'key' }) }, ['add', 'demo', 'KEY'])
+
+    const writes = requests.filter(request => request.init?.method === 'PUT')
+    expect(writes).toHaveLength(2)
+    expect(writes[0]!.url).toContain('/_files/demo/key')
+
+    const saved = JSON.parse(Buffer.from(JSON.parse(String(writes[1]!.init!.body)).content, 'base64').toString())
+    expect(saved.files.key).toMatchObject({ sha256: sha(newBytes), bytes: newBytes.byteLength })
+    expect(logger.info.mock.calls.flat().join('\n')).toMatch(/\d+ B → [0-9a-f]{8}\/\d+ B/)
+  })
+
   it('id 被别的键占用时报错', async () => {
     const store = parseStore(JSON.stringify({
       schema: 1,

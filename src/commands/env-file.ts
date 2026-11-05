@@ -157,7 +157,7 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
     })
   }
   else if (sha256(current.bytes) !== digest) {
-    logger.info(`覆盖已有文件 ${colorText(id, 'blue')}（sha256 ${sha256(current.bytes).slice(0, 8)} → ${digest.slice(0, 8)}）`)
+    logger.info(`覆盖已有文件 ${colorText(id, 'blue')}（sha256 ${sha256(current.bytes).slice(0, 8)}/${current.bytes.byteLength} B → ${digest.slice(0, 8)}/${bytes.byteLength} B）`)
     await client.writeBytes(path, bytes, {
       condition: { kind: 'update', expectedVersion: current.version },
       message: `env: update file ${id} (${key}) in ${name}`
