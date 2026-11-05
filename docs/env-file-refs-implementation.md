@@ -44,7 +44,7 @@
 ```text
 pnpm lint       通过
 pnpm typecheck  通过
-pnpm test       24 个文件，316 通过 / 3 跳过
+pnpm test       24 个文件，317 通过 / 3 跳过
 pnpm build      成功（dist/index.mjs 约 75 kB）
 ```
 
