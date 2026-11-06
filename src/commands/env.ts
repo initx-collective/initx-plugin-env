@@ -14,7 +14,7 @@ import { collectVarFileRefs, keysReferencing, parseFileRef } from '../files/refs
 import { resolveStoreVars } from '../files/resolve'
 import { isConflictError } from '../storage/errors'
 import { createStorageAdapter } from '../storage/factory'
-import { applyVars, listStores, readStore, serializeStore, writeStore } from '../store'
+import { applyVars, deleteStore, listStores, readStore, serializeStore, writeStore } from '../store'
 import { createEmptyStore, isValidEnvKey, normalizeStoreName } from '../types'
 import { diffEnv, mergeEnv, parseEnv, readEnvFileIfExists, writeEnvFileWithBackup } from '../utils/envfile'
 import { injectEnv, isGitHubActions } from '../utils/gh-env'
@@ -53,11 +53,19 @@ export async function handleEnv(ctx: EnvCommandContext, args: string[]): Promise
     case 'push':
       return runPush(ctx, rest)
 
+    case 'unset':
+      return runUnset(ctx, rest)
+
+    case 'rm':
+    case 'remove':
+    case 'delete':
+      return runRemove(ctx, rest)
+
     case 'setup':
       return runSetup(ctx, rest)
 
     default:
-      throw new Error(`未知子命令 "${action}"，可用：list | pull | set | push | setup | apply（npx initx env help）`)
+      throw new Error(`未知子命令 "${action}"，可用：list | pull | set | unset | push | rm | setup | apply（npx initx env help）`)
   }
 }
 
@@ -405,6 +413,136 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
     logger.warn(colorText(`--inline：这些键已改成普通值，文件条目已清理：${analysis.inline.join('、')}`, 'yellow'))
 
   logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}${analysis.fileUpdates.length ? ` · 文件 ${analysis.fileUpdates.length}` : ''}`, 'green'))
+}
+
+async function runRemove(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const [rawName] = args
+
+  if (!rawName)
+    throw new Error('用法：npx initx env rm <store 名> [--dry-run] [--keep-files]')
+
+  const name = normalizeStoreName(rawName)
+  const { config, client } = createClient(ctx)
+  const ref = await requireStore(client, config.path, name)
+  const fileIds = Object.keys(ref.store.files ?? {})
+  const varsCount = Object.keys(ref.store.vars).length
+  const keepFiles = ctx.options.boolean('keep-files')
+
+  if (ctx.options.boolean('dry-run')) {
+    logger.info(`${colorText('--dry-run，未删除', 'yellow')}：将删除 store "${colorText(name, 'blue')}"（${varsCount} 个变量${fileIds.length && !keepFiles ? ` · ${fileIds.length} 个文件` : ''}）`)
+    return
+  }
+
+  // 先删文件对象，再删 store JSON：中途失败只留下可被 check 发现的孤儿，而不是悬空引用。
+  const removedFiles = keepFiles ? 0 : await removeStoreFiles(client, config.path, name, fileIds)
+
+  await deleteStore(client, config.path, name, ref.version, `env: rm ${name}`)
+
+  logger.success(colorText(`store "${name}" 已删除（${varsCount} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}）`, 'green'))
+
+  if (fileIds.length && keepFiles)
+    logger.warn(colorText(`按 --keep-files 保留了 ${fileIds.length} 个文件对象`, 'yellow'))
+}
+
+/** 删除 store 目录下 `_files/` 里的文件对象，返回实际删掉的数量。 */
+async function removeStoreFiles(
+  client: StorageAdapter,
+  basePath: string,
+  name: string,
+  ids: string[]
+): Promise<number> {
+  let removed = 0
+
+  for (const id of ids) {
+    const path = storeFilesPath(basePath, name, id)
+    const current = await client.readBytes(path, { maxBytes: maxFileBytes() })
+
+    if (!current) {
+      logger.warn(colorText(`文件 "${id}" 已经不存在，跳过`, 'yellow'))
+      continue
+    }
+
+    await client.remove(path, { expectedVersion: current.version, message: `env: rm file ${id} in ${name}` })
+    removed++
+  }
+
+  return removed
+}
+
+async function runUnset(ctx: EnvCommandContext, args: string[]): Promise<void> {
+  const [rawName, ...keys] = args
+
+  if (!rawName || !keys.length)
+    throw new Error('用法：npx initx env unset <store 名> KEY [KEY2 ...]')
+
+  const name = normalizeStoreName(rawName)
+  const { config, client } = createClient(ctx)
+  const ref = await requireStore(client, config.path, name)
+  const store = ref.store
+
+  const missing = keys.filter(key => !(key in store.vars))
+
+  if (missing.length === keys.length)
+    throw new Error(`store "${name}" 里没有这些变量：${missing.join('、')}`)
+
+  // 删除前先记下每个键引用的文件 id，删完之后判断是否还有别的键在用。
+  const touchedIds = new Set(
+    keys
+      .map(key => parseFileRef(store.vars[key] ?? ''))
+      .filter((id): id is string => id !== null)
+  )
+
+  for (const key of keys)
+    delete store.vars[key]
+
+  const keptIds: string[] = []
+  const orphanIds: string[] = []
+
+  for (const id of touchedIds) {
+    if (keysReferencing(store, id).length)
+      keptIds.push(id)
+    else
+      orphanIds.push(id)
+  }
+
+  // 没有引用的文件条目从元数据里移除，避免 dangling-metadata。
+  for (const id of orphanIds) {
+    if (store.files)
+      delete store.files[id]
+  }
+  if (store.files && !Object.keys(store.files).length)
+    delete store.files
+
+  const remainingVars = Object.keys(store.vars)
+
+  const reportMissing = (): void => {
+    for (const key of missing)
+      logger.warn(colorText(`  - ${key}（原本就不存在）`, 'yellow'))
+  }
+
+  if (!remainingVars.length) {
+    // 变量被删光：直接删掉 store 本身，并清理文件对象，否则会留一个空壳。
+    const removedFiles = await removeStoreFiles(client, config.path, name, orphanIds)
+    await deleteStore(client, config.path, name, ref.version, `env: unset ${keys.join(', ')} in ${name}`)
+
+    logger.success(colorText(`store "${name}" 的变量已删光，store 一并删除（${keys.length - missing.length} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}）`, 'green'))
+    reportMissing()
+    return
+  }
+
+  await writeStore(client, config.path, name, store, `env: unset ${keys.join(', ')} in ${name}`, ref.version)
+
+  const removedFiles = await removeStoreFiles(client, config.path, name, orphanIds)
+
+  logger.success(colorText(`store "${name}" 已更新：删除 ${keys.length - missing.length} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}`, 'green'))
+  for (const key of keys) {
+    if (!missing.includes(key))
+      logger.info(colorText(`  - ${key}`, 'red'))
+  }
+  reportMissing()
+
+  if (keptIds.length)
+    logger.info(colorText(`文件 ${keptIds.join('、')} 仍被其他键引用，已保留`, 'yellow'))
 }
 
 async function pickDefaultEnvFile(): Promise<string> {

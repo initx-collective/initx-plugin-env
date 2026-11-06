@@ -11,7 +11,7 @@ import { handleEnvRun } from './commands/env-run'
 import { DEFAULT_BRANCH, DEFAULT_PATH } from './config'
 import { reportCommandError } from './utils/terminal'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run', 'file', 'help']
+const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'help']
 const CONFIG_ACTIONS = ['setup', 'set', 'get', 'list', 'ls', 'rm', 'remove', 'status', 'help']
 
 export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
@@ -27,7 +27,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   rules: InitxMatcherRules = [
     {
       matching: 'env',
-      description: 'Env vars from a private repo: env list | pull | set | push | setup | apply | run',
+      description: 'Env vars from a private repo: env list | pull | set | push | rm | setup | apply | run',
       // matchinitx 的字符串匹配是**精确相等**，所以这里必须把子命令列全；
       // 带 undefined 是为了让裸 `npx initx env`（什么都不带）也能进来打帮助。
       optional: [undefined, ...ENV_ACTIONS]
@@ -111,12 +111,18 @@ function printEnvHelp(): void {
                               --to .env.local  指定目标文件（可逗号分隔多个）
                               --dry-run        只看会改哪些键，不写文件
   set <store> KEY=value ...   直接往仓库里的 store 写变量（store 名就是目录名）
+  unset <store> KEY [KEY...]  删除变量；值是文件引用时，连 _files 下对应文件一起删
+                              删光所有变量时，store 本身也一并删除
   push <store>                从本地 .env 反向更新 store
                               --from .env.local  指定来源文件（默认 .env.local → .env）
                               --prune            删掉仓库里本地没有的键
                               --force            远端被改过时强制覆盖
                               --update-files     引用键内容变化时重新上传，保留引用
                               --inline           引用键改成普通值，删除文件条目
+  rm <store>                  删除整个 store（store 名就是目录名）
+                              --dry-run          只报告，不删除
+                              --keep-files       保留 _files 下的文件对象
+                                                 默认连文件一起删
   setup [store]               把 store 注入**本次**运行的环境：
                               GitHub Actions 里写 $GITHUB_ENV（后续 step 可见）并自动脱敏
                               本地则打到 stdout（--stdout 强制；--json 输出 JSON）
