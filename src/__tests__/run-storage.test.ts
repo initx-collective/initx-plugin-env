@@ -44,7 +44,11 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
         };
         const options = createCliOptions(JSON.parse(process.env.INITX_TEST_OPTIONS));
         logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info');
-        await handleEnvRun({store:{}, options}, JSON.parse(process.env.INITX_TEST_ARGS));
+        // 夹具直接构造 store：重构后 vault 定位只能来自 profile。
+        // apiBaseUrl 必须和下面写入的项目文件一致，否则 profile 匹配不上。
+        const apiBaseUrl = process.env.INITX_TEST_TYPE === 'github' ? 'https://api.github.com' : 'https://gitlab.example/api/v4';
+        const store = { profiles: { default: { type: process.env.INITX_TEST_TYPE, apiBaseUrl, repo: 'fake/vault', token: 'fixture-token' } } };
+        await handleEnvRun({store, options}, JSON.parse(process.env.INITX_TEST_ARGS));
       `
     },
     outfile: host,
@@ -70,10 +74,13 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
         }]
       : []
   })
-  if (!harness.env.INITX_TEST_LEGACY)
-    await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type, repo: 'fake/vault' } }))
+  if (!harness.env.INITX_TEST_LEGACY) {
+    const apiBaseUrl = type === 'github' ? 'https://api.github.com' : 'https://gitlab.example/api/v4'
+    await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type, apiBaseUrl, repo: 'fake/vault' } }))
+  }
   harness.env.INITX_TEST_OPTIONS = JSON.stringify(options)
   harness.env.INITX_TEST_ARGS = JSON.stringify(args)
+  harness.env.INITX_TEST_TYPE = type
   const running = start(process.execPath, [host], { env: harness.env, cwd: harness.directory })
   children.push(running)
   return running
@@ -94,21 +101,10 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     expect(JSON.parse(result.stdout)).toEqual({ argv: tail, cwd: harness.directory, vars: { ...vars, KEEP_PARENT: 'kept' }, input: 'child-stdin-marker' })
     expect(result.stderr).toBe('child-stderr-marker')
     const events = await readFile(harness.env.INITX_TEST_EVENTS!, 'utf8')
-    expect(events).toContain(type === 'github' ? 'api.github.com/repos/fake/vault' : 'gitlab.com/api/v4/projects/fake%2Fvault')
+    expect(events).toContain(type === 'github' ? 'api.github.com/repos/fake/vault' : 'gitlab.example/api/v4/projects/fake%2Fvault')
     expect(events).not.toContain('fake-bootstrap-token')
     expect((await readdir(harness.directory)).filter(name => /^\.env/.test(name))).toEqual([])
     expect(await readFile(harness.env.GITHUB_ENV!, 'utf8')).toBe('unchanged\n')
-  })
-
-  it('preserves the Slides-style call without new flags or a project file', async () => {
-    harness.env.INITX_TEST_VARS = '{}'
-    harness.env.INITX_TEST_LEGACY = '1'
-    harness.env.INITX_ENV_REPO = 'fake/slides-vault'
-    const running = await execute('github', { '--': [process.execPath, '-e', 'process.stdout.write("slides-child-executed"); process.exitCode=17'] })
-    // This call uses legacy location overrides even on a GitLab runner.
-    const result = await running.done
-    expect(result.code).toBe(17)
-    expect(result.stdout).toBe('slides-child-executed')
   })
 
   it('does not leak fetch error contents or launch the child on a read failure', async () => {
@@ -127,7 +123,7 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
     const result = await (await execute(type, { [flag]: true, '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
     const output = stripVTControlCharacters(result.stdout)
     expect(result.code).toBe(1)
-    expect(output).toContain(` DEBUG  env run: 后端=${type}，配置来源=项目文件，凭据来源=INITX_ENV_TOKEN`)
+    expect(output).toContain(` DEBUG  env run: 后端=${type}，profile=default（来自 project-match），凭据来源=INITX_ENV_TOKEN`)
     expect(output).toContain('HTTP 403')
     expect(result.stdout + result.stderr).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
   })

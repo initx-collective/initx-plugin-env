@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCliOptions } from '../cli-options'
 import { handleEnv } from '../commands/env'
 import { handleEnvApply } from '../commands/env-apply'
-import { handleEnvConfig } from '../commands/env-config'
+import { handleProfile } from '../commands/env-profile'
 import { loadSodium, openSealedBoxForTest } from '../crypto/sealed-box'
 import { createHarness } from './run-harness'
 
@@ -23,7 +23,9 @@ const targetToken = 'github-target-only'
 beforeEach(async () => {
   harness = await createHarness()
   file = join(harness.directory, '.initx-env.json')
-  await writeFile(file, JSON.stringify({ schema: 1, storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'group/sub/vault', branch: 'main', path: 'stores' } }))
+  await writeFile(file, JSON.stringify({ schema: 1, storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'group/sub/vault', branch: 'test-branch', path: 'test-stores' } }))
+  // 参数化用例里 github 也走同一套夹具，故 store 需要两个后端各一份 profile。
+  Object.assign(harness.env, {})
   vars = { A: 'new', REMOTE: 'keep' }
   requests = []
   for (const key of ['INITX_ENV_REPO', 'INITX_ENV_BRANCH', 'INITX_ENV_PATH', 'INITX_ENV_TYPE', 'INITX_ENV_API_BASE_URL', 'INITX_ENV_TARGET_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'])
@@ -53,6 +55,8 @@ afterEach(async () => {
 })
 
 const options = (extra: Record<string, unknown> = {}) => createCliOptions({ config: file, ...extra })
+/** 空仓库用例自行写项目文件，显式给 profile 避免再做匹配 */
+const only = (name: string) => createCliOptions({ config: file, profile: name })
 
 describe('gitLab command regressions', () => {
   it.each([
@@ -61,7 +65,7 @@ describe('gitLab command regressions', () => {
     ['gitlab', 'push'],
     ['gitlab', 'set']
   ] as const)('%s %s initializes an empty vault on main without a README or separate branch mutation', async (type, action) => {
-    await writeFile(file, JSON.stringify({ schema: 1, storage: { type, repo: 'group/vault' } }))
+    await writeFile(file, JSON.stringify({ schema: 1, storage: { type, apiBaseUrl: type === 'github' ? 'https://api.github.com' : 'https://gitlab.com/api/v4', repo: 'group/vault', branch: 'main', path: 'stores' } }))
     const envFile = join(harness.directory, '.env')
     await writeFile(envFile, 'A=fake-only\n')
     let content: string | undefined
@@ -83,17 +87,19 @@ describe('gitLab command regressions', () => {
         return Response.json({ empty_repo: true })
       return new Response(null, { status: 404 })
     }))
-    await handleEnvConfig({}, ['status'], options())
+    await handleProfile({ store: harness.testStore(), options: only(type === 'github' ? 'githubGroup' : 'gitlabGroup') }, 'status', [])
     expect(logger.success.mock.calls.flat().join('\n')).toContain('0 个 store')
     expect(writes).toEqual([])
-    await handleEnv({ store: {}, options: options({ from: envFile }) }, action === 'push' ? ['push', 'demo'] : ['set', 'demo', 'A=fake-only'])
+    const flagProfile = type === 'github' ? 'githubGroup' : 'gitlabGroup'
+    const actionOptions = createCliOptions({ config: file, profile: flagProfile, from: envFile })
+    await handleEnv({ store: harness.testStore(), options: actionOptions }, action === 'push' ? ['push', 'demo'] : ['set', 'demo', 'A=fake-only'])
     expect(writes).toHaveLength(1)
     expect(JSON.parse(content!)).toMatchObject({ schema: 1, vars: { A: 'fake-only' } })
   })
 
   it('list and status go through the adapter factory', async () => {
-    await handleEnv({ store: {}, options: options() }, ['list'])
-    await handleEnvConfig({}, ['status'], options())
+    await handleEnv({ store: harness.testStore(), options: only('gitlabSub') }, ['list'])
+    await handleProfile({ store: harness.testStore(), options: only('gitlabSub') }, 'status', [])
     expect(logger.info.mock.calls.flat().join('\n')).toContain('demo')
     expect(logger.success.mock.calls.flat().join('\n')).toContain('连通正常')
     expect(requests.every(request => request.url.hostname === 'gitlab.example')).toBe(true)
@@ -102,17 +108,17 @@ describe('gitLab command regressions', () => {
   it('pull/set/push/setup retain merging, pruning and GitHub job injection semantics', async () => {
     const envFile = join(harness.directory, '.env')
     await writeFile(envFile, '# comment\nA=old\nLOCAL=keep\n')
-    await handleEnv({ store: {}, options: options({ to: envFile }) }, ['pull', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: options({ to: envFile }) }, ['pull', 'demo'])
     expect(await readFile(envFile, 'utf8')).toContain('# comment\nA=new\nLOCAL=keep')
-    await handleEnv({ store: {}, options: options() }, ['set', 'demo', 'ADDED=中文'])
+    await handleEnv({ store: harness.testStore(), options: options() }, ['set', 'demo', 'ADDED=中文'])
     expect(vars).toEqual({ A: 'new', REMOTE: 'keep', ADDED: '中文' })
     await writeFile(envFile, 'A=changed\nLOCAL=keep\n')
-    await handleEnv({ store: {}, options: options({ from: envFile }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: options({ from: envFile }) }, ['push', 'demo'])
     expect(vars).toEqual({ A: 'changed', REMOTE: 'keep', ADDED: '中文', LOCAL: 'keep' })
-    await handleEnv({ store: {}, options: options({ from: envFile, prune: true }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: options({ from: envFile, prune: true }) }, ['push', 'demo'])
     expect(vars).toEqual({ A: 'changed', LOCAL: 'keep' })
     vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnv({ store: {}, options: options() }, ['setup', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: options() }, ['setup', 'demo'])
     expect(await readFile(harness.env.GITHUB_ENV!, 'utf8')).toContain('A=changed')
     const writes = requests.filter(request => request.init.method)
     expect(writes).toHaveLength(3)
@@ -120,7 +126,7 @@ describe('gitLab command regressions', () => {
   })
 
   it.each(['github', 'gitlab'] as const)('%s force is bounded to one fresh-version retry and never retries permission/validation failures', async (type: StorageType) => {
-    await writeFile(file, JSON.stringify({ schema: 1, storage: { type, repo: 'group/vault' } }))
+    await writeFile(file, JSON.stringify({ schema: 1, storage: { type, apiBaseUrl: type === 'github' ? 'https://api.github.com' : 'https://gitlab.com/api/v4', repo: 'group/vault', branch: 'main', path: 'stores' } }))
     const envFile = join(harness.directory, '.env')
     await writeFile(envFile, 'A=local\n')
     for (const { status, concurrent } of [{ status: type === 'gitlab' ? 400 : 422, concurrent: true }, { status: 403, concurrent: false }, { status: 422, concurrent: false }]) {
@@ -136,7 +142,7 @@ describe('gitLab command regressions', () => {
         }
         return Response.json({ type: 'file', sha: version, last_commit_id: version, content: Buffer.from(JSON.stringify({ schema: 1, vars: { A: 'old' } })).toString('base64'), encoding: 'base64' })
       }))
-      const result = handleEnv({ store: {}, options: options({ from: envFile, force: true }) }, ['push', 'demo'])
+      const result = handleEnv({ store: harness.testStore(), options: options({ from: envFile, force: true }) }, ['push', 'demo'])
       await expect(result).rejects.toMatchObject({ code: status === 403 ? 'permission' : concurrent ? 'conflict' : 'validation' })
       expect(writes).toBe(concurrent ? 2 : 1)
     }
@@ -144,7 +150,7 @@ describe('gitLab command regressions', () => {
 
   it('rejects a missing or malformed explicit --config before any network request', async () => {
     for (const config of [join(harness.directory, 'missing.json'), true, ['one', 'two']])
-      await expect(handleEnv({ store: {}, options: options({ config }) }, ['list'])).rejects.toThrow()
+      await expect(handleEnv({ store: harness.testStore(), options: options({ config }) }, ['list'])).rejects.toThrow()
     expect(requests).toEqual([])
   })
 })
@@ -152,7 +158,7 @@ describe('gitLab command regressions', () => {
 describe('apply source and destination credentials', () => {
   it('requires an independent target credential for a GitLab source, including dry-run', async () => {
     vi.stubEnv('GH_TOKEN', 'unrelated-github-token')
-    await expect(handleEnvApply({ store: {}, options: options({ 'repo': 'target/actions', 'dry-run': true }) }, ['demo'])).rejects.toThrow(/独立凭据/)
+    await expect(handleEnvApply({ store: harness.testStore(), options: options({ 'repo': 'target/actions', 'dry-run': true }) }, ['demo'])).rejects.toThrow(/独立凭据/)
     expect(requests).toEqual([])
   })
 
@@ -169,7 +175,7 @@ describe('apply source and destination credentials', () => {
       requests.push({ url, init })
       return url.pathname.endsWith('/public-key') ? Response.json({ key_id: 'key', key: publicKey }) : new Response(null, { status: 201 })
     }))
-    await handleEnvApply({ store: {}, options: options({ repo: 'target/actions', targetToken, only: 'A' }) }, ['demo'])
+    await handleEnvApply({ store: harness.testStore(), options: options({ repo: 'target/actions', targetToken, only: 'A' }) }, ['demo'])
     const source = requests.find(request => request.url.hostname === 'gitlab.example')!
     expect(source.init.headers).toMatchObject({ 'PRIVATE-TOKEN': sourceToken })
     const destination = requests.filter(request => request.url.hostname === 'api.github.com')
@@ -185,7 +191,7 @@ describe('apply source and destination credentials', () => {
 
   it('supports INITX_ENV_TARGET_TOKEN and keeps source identity unchanged', async () => {
     vi.stubEnv('INITX_ENV_TARGET_TOKEN', targetToken)
-    await handleEnvApply({ store: {}, options: options({ 'repo': 'target/actions', 'dry-run': true }) }, ['demo'])
+    await handleEnvApply({ store: harness.testStore(), options: options({ 'repo': 'target/actions', 'dry-run': true }) }, ['demo'])
     expect(requests).toHaveLength(1)
     expect(requests[0]!.url.pathname).toContain('/projects/group%2Fsub%2Fvault/')
     expect(logger.info.mock.calls.flat().join('\n')).toContain('target/actions')

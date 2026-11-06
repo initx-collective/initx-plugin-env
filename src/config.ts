@@ -1,13 +1,24 @@
+import type { EnvProfile } from './profile'
 import type { StorageLocation, StorageType } from './storage/types'
 import process from 'node:process'
+import { matchProfile, sortProfileNames } from './profile'
 import { readProjectConfig } from './project-config'
-import { assertSafePath, DEFAULT_API_URLS, normalizeApiBaseUrl, validateStorageRepo } from './storage/path'
+import { DEFAULT_API_URLS, normalizeApiBaseUrl } from './storage/path'
+import { migrateLegacyStore } from './store-migrate'
 
 export const DEFAULT_BRANCH = 'main'
 export const DEFAULT_PATH = 'stores'
 
-/** Legacy flat fields remain GitHub-only; new local locations and credentials are scoped. */
+/**
+ * 插件本地配置：只有 profiles 一份真相，外加"默认用哪个"。
+ *
+ * 重构后不再有顶层 repo/token 之类的扁平字段——那些由 `migrateLegacyStore`
+ * 一次性清掉，避免出现两处配置互相覆盖。
+ */
 export interface EnvPluginStore {
+  defaultProfile?: string
+  profiles?: Record<string, EnvProfile>
+  /** 旧字段，仅用于迁移识别，迁移后即删除 */
   repo?: string
   token?: string
   branch?: string
@@ -17,113 +28,196 @@ export interface EnvPluginStore {
 }
 
 export interface EnvConfigOverrides {
-  repo?: string
+  /** 显式指定 profile，优先级最高 */
+  profile?: string
   token?: string
-  branch?: string
-  path?: string
-  type?: StorageType
-  apiBaseUrl?: string
   config?: string
   cwd?: string
   env?: Record<string, string | undefined>
 }
 
-export interface EnvPluginConfig extends StorageLocation {
+export interface ResolvedEnvConfig extends StorageLocation {
   token: string
-}
-export type TokenSource = 'flag' | 'INITX_ENV_TOKEN' | 'GH_TOKEN' | 'GITHUB_TOKEN' | 'config' | 'none'
-export interface ResolvedEnvConfig extends EnvPluginConfig {
   tokenSource: TokenSource
+  profile: string
+  profileSource: ProfileSource
   configSource: string
-  sources: Record<'type' | 'apiBaseUrl' | 'repo' | 'branch' | 'path', string>
 }
 
-export function credentialKey(type: StorageType, apiBaseUrl: string): string {
-  return `${type}:${normalizeApiBaseUrl(apiBaseUrl)}`
-}
+export type TokenSource = 'flag' | 'INITX_ENV_TOKEN' | 'profile' | 'none'
+export type ProfileSource = 'flag' | 'project-match' | 'default' | 'none'
 
-export function localIdentity(store: EnvPluginStore): { type: StorageType, apiBaseUrl: string } {
-  const type = store.storage?.type || 'github'
-  if (type !== 'github' && type !== 'gitlab')
-    throw new Error('本地 storage.type 必须是 github 或 gitlab')
-  return { type, apiBaseUrl: normalizeApiBaseUrl(store.storage?.apiBaseUrl || DEFAULT_API_URLS[type]) }
-}
-
-function resolveLocation(store: EnvPluginStore, overrides: EnvConfigOverrides) {
-  const env = overrides.env ?? process.env
-  const project = readProjectConfig(overrides.config, overrides.cwd)
-  const local = localIdentity(store)
-  const rawType = overrides.type || env.INITX_ENV_TYPE || project?.storage.type || local.type
-  if (rawType !== 'github' && rawType !== 'gitlab')
-    throw new Error('storage.type 必须是 github 或 gitlab')
-  const type: StorageType = rawType
-  const projectMatchesType = project?.storage.type === type
-  const base = overrides.apiBaseUrl || env.INITX_ENV_API_BASE_URL
-    || (projectMatchesType ? project.storage.apiBaseUrl : undefined)
-    || (local.type === type ? local.apiBaseUrl : DEFAULT_API_URLS[type])
-  const apiBaseUrl = normalizeApiBaseUrl(base)
-  const localMatches = local.type === type && local.apiBaseUrl === apiBaseUrl
-  const projectMatches = projectMatchesType && project.storage.apiBaseUrl === apiBaseUrl
-  const localFields = localMatches ? (store.storage || store) : {}
-  const fields = projectMatches ? project.storage : undefined
-  const sources: ResolvedEnvConfig['sources'] = {
-    type: overrides.type ? 'override' : env.INITX_ENV_TYPE ? 'INITX_ENV_TYPE' : project ? 'project' : 'local/default',
-    apiBaseUrl: overrides.apiBaseUrl ? 'override' : env.INITX_ENV_API_BASE_URL ? 'INITX_ENV_API_BASE_URL' : projectMatches ? 'project' : localMatches ? 'local/default' : 'default',
-    repo: '',
-    branch: '',
-    path: ''
+export class ProfileError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProfileError'
   }
-  function field(key: 'repo' | 'branch' | 'path', fallback: string): string {
-    const envKey = `INITX_ENV_${key.toUpperCase()}`
-    const candidates = [
-      [overrides[key] || undefined, 'override'],
-      [env[envKey] || undefined, envKey],
-      [fields?.[key], 'project'],
-      [localFields[key] || undefined, 'local'],
-      [fallback, 'default']
-    ] as const
-    const selected = candidates.find(([value]) => value !== undefined)!
-    sources[key] = selected[1]
-    return selected[0]!
-  }
-  return { type, apiBaseUrl, repo: field('repo', ''), branch: field('branch', DEFAULT_BRANCH), path: field('path', DEFAULT_PATH), sources, configSource: project?.file || 'local/env/default' }
 }
 
-function tokenFor(store: EnvPluginStore, overrides: EnvConfigOverrides, identity: Pick<StorageLocation, 'type' | 'apiBaseUrl'>): { token: string, source: TokenSource } {
-  const env = overrides.env ?? process.env
-  if (overrides.token)
-    return { token: overrides.token, source: 'flag' }
-  if (env.INITX_ENV_TOKEN)
-    return { token: env.INITX_ENV_TOKEN, source: 'INITX_ENV_TOKEN' }
-  const legacy = identity.type === 'github' && identity.apiBaseUrl === DEFAULT_API_URLS.github
-  if (legacy) {
-    for (const key of ['GH_TOKEN', 'GITHUB_TOKEN'] as const) {
-      if (env[key])
-        return { token: env[key], source: key }
-    }
-  }
-  const scoped = store.credentials?.[credentialKey(identity.type, identity.apiBaseUrl)]
-  if (scoped)
-    return { token: scoped, source: 'config' }
-  if (legacy && store.token)
-    return { token: store.token, source: 'config' }
-  return { token: '', source: 'none' }
+export function profileNames(store: EnvPluginStore): string[] {
+  return sortProfileNames(Object.keys(store.profiles ?? {}))
 }
 
-export function resolveToken(store: EnvPluginStore, overrides: EnvConfigOverrides = {}): { token: string, source: TokenSource } {
-  return tokenFor(store, overrides, resolveLocation(store, overrides))
+/** 取某个 profile；不存在时报可操作的错误。 */
+export function requireProfile(store: EnvPluginStore, name: string): EnvProfile {
+  const profile = store.profiles?.[name]
+
+  if (!profile) {
+    const existing = profileNames(store)
+    throw new ProfileError(
+      `profile "${name}" 不存在\n${
+        existing.length ? `  现有：${existing.join('、')}\n` : '  本机还没有任何 profile\n'
+      }  新建：ix env setup ${name}`
+    )
+  }
+
+  return profile
+}
+
+/** 组装一个 profile：缺省分支/目录补默认值，API 地址统一归一化。 */
+export function normalizeProfile(profile: EnvProfile): EnvProfile {
+  return {
+    ...profile,
+    apiBaseUrl: normalizeApiBaseUrl(profile.apiBaseUrl),
+    branch: profile.branch || DEFAULT_BRANCH,
+    path: profile.path ?? DEFAULT_PATH
+  }
+}
+
+function describeTarget(type: StorageType, apiBaseUrl: string, repo: string): string {
+  return `${type} · ${apiBaseUrl}${repo ? ` · ${repo}` : ''}`
+}
+
+function resolveByProject(
+  store: EnvPluginStore,
+  project: NonNullable<ReturnType<typeof readProjectConfig>>
+): { name: string, profile: EnvProfile } {
+  const profiles = store.profiles ?? {}
+  const result = matchProfile(profiles, project.storage)
+
+  if (result.reason === 'matched' && result.matched)
+    return result.matched
+
+  const target = describeTarget(project.storage.type, project.storage.apiBaseUrl, project.storage.repo)
+
+  if (result.reason === 'none') {
+    const existing = profileNames(store)
+    throw new ProfileError(
+      `找不到匹配的 profile\n`
+      + `  项目要求：${target}\n${
+        existing.length
+          ? `  本地已有：\n${existing.map((name) => {
+            const p = profiles[name]!
+            return `    ${name}  ${describeTarget(p.type, p.apiBaseUrl, p.repo)}`
+          }).join('\n')}\n`
+          : '  本机还没有任何 profile\n'
+      }  新建：ix env setup\n`
+      + `  或临时指定：ix env list --profile <name>`
+    )
+  }
+
+  // ambiguous：同后端多个 profile 且 repo 也没能唯一区分。
+  throw new ProfileError(
+    `有多个 profile 指向 ${project.storage.type} · ${project.storage.apiBaseUrl}，无法仅凭项目文件确定用哪个\n`
+    + `  项目 repo：${project.storage.repo || '(未指定)'}\n`
+    + `  候选：\n${result.candidates.map((entry) => {
+      const mark = entry.profile.repo === project.storage.repo ? ' ← repo 匹配' : ''
+      return `    ${entry.name}  repo: ${entry.profile.repo || '(空)'}${mark}`
+    }).join('\n')}\n`
+    + `  请显式指定：--profile <name>，或调整 .initx-env.json 的 repo`
+  )
 }
 
 export function resolveConfig(store: EnvPluginStore, overrides: EnvConfigOverrides = {}): ResolvedEnvConfig {
-  const location = resolveLocation(store, overrides)
-  if (!location.repo)
-    throw new Error('还没配 vault 仓库，请配置 .initx-env.json 或 env-config set repo <owner/repo>')
-  validateStorageRepo(location.type, location.repo)
-  assertSafePath(location.path, true)
-  const { token, source } = tokenFor(store, overrides, location)
-  if (!token)
-    throw new Error('没有可用的当前后端 token，请设置 INITX_ENV_TOKEN、--token 或绑定当前 API 地址的本地凭据')
-  return { ...location, token, tokenSource: source }
+  const env = overrides.env ?? process.env
+  // 迁移在这里兜底：任何读配置的路径都不会再看到旧形状。
+  migrateLegacyStore(store)
+
+  const explicit = overrides.profile
+  const project = readProjectConfig(overrides.config, overrides.cwd)
+
+  let name: string
+  let profileSource: ProfileSource
+  let profile: EnvProfile
+
+  if (explicit) {
+    name = explicit
+    profileSource = 'flag'
+    profile = requireProfile(store, explicit)
+  }
+  else if (project) {
+    const resolved = resolveByProject(store, project)
+    name = resolved.name
+    profileSource = 'project-match'
+    profile = resolved.profile
+  }
+  else if (store.defaultProfile && store.profiles?.[store.defaultProfile]) {
+    name = store.defaultProfile
+    profileSource = 'default'
+    profile = store.profiles[name]!
+  }
+  else {
+    // 只有一个 profile 时无需显式默认——本机只配了一套，意图没有歧义。
+    const names = profileNames(store)
+    if (names.length === 1) {
+      name = names[0]!
+      profileSource = 'default'
+      profile = store.profiles![name]!
+    }
+    else {
+      throw new ProfileError(
+        names.length
+          ? `有多个 profile 但没有默认值：${names.join('、')}\n  选一个：ix env use <name>\n  或指定：--profile <name>`
+          : '还没有可用的 profile\n  新建：ix env setup'
+      )
+    }
+  }
+
+  profile = normalizeProfile(profile)
+
+  if (!profile.repo) {
+    throw new ProfileError(
+      `profile "${name}" 缺少 vault 仓库\n`
+      + `  修改：ix env edit ${name}`
+    )
+  }
+
+  const flagToken = overrides.token
+  const envToken = env.INITX_ENV_TOKEN
+  const token = flagToken || envToken || profile.token || ''
+  const tokenSource: TokenSource = flagToken
+    ? 'flag'
+    : envToken ? 'INITX_ENV_TOKEN' : profile.token ? 'profile' : 'none'
+
+  if (!token) {
+    throw new ProfileError(
+      `profile "${name}" 没有 token\n`
+      + `  CI 里设置 INITX_ENV_TOKEN，或本地：ix env edit ${name}`
+    )
+  }
+
+  return {
+    type: profile.type,
+    apiBaseUrl: profile.apiBaseUrl,
+    repo: profile.repo,
+    branch: profile.branch ?? DEFAULT_BRANCH,
+    path: profile.path ?? DEFAULT_PATH,
+    token,
+    tokenSource,
+    profile: name,
+    profileSource,
+    configSource: project?.file ?? 'default'
+  }
+}
+
+export function resolveToken(store: EnvPluginStore, overrides: EnvConfigOverrides = {}): { token: string, source: TokenSource } {
+  const config = resolveConfig(store, overrides)
+  return { token: config.token, source: config.tokenSource }
+}
+
+/** 新建 profile 时给一个可用的默认 API 地址。 */
+export function defaultApiBaseUrl(type: StorageType): string {
+  return DEFAULT_API_URLS[type]
 }
 
 export function maskSecret(value: string): string {

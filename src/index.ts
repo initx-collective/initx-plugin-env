@@ -5,37 +5,30 @@ import { logger } from '@initx-plugin/utils'
 import { createCliOptions } from './cli-options'
 import { handleEnv } from './commands/env'
 import { handleEnvApply } from './commands/env-apply'
-import { handleEnvConfig, printConfigHelp } from './commands/env-config'
 import { handleEnvFile } from './commands/env-file'
+import { handleProfile } from './commands/env-profile'
 import { handleEnvRun } from './commands/env-run'
-import { DEFAULT_BRANCH, DEFAULT_PATH } from './config'
+import { migrateLegacyStore } from './store-migrate'
 import { reportCommandError } from './utils/terminal'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'help']
-const CONFIG_ACTIONS = ['setup', 'set', 'get', 'list', 'ls', 'rm', 'remove', 'status', 'help']
+const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'profile', 'help']
 
 export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   /**
-   * 插件自己的配置（vault 仓库地址 + token）。
-   * initx 会把它存到 `~/.initx/stores/@initx-plugin/env/store.json`，退出时自动落盘。
+   * 插件自己的配置。
+   *
+   * initx 会把内存里的 store 在退出时落盘，所以迁移直接改对象即可。
+   * 这里刻意不预置任何定位字段——唯一真相是 `profiles`。
    */
-  defaultStore: EnvPluginStore = {
-    branch: DEFAULT_BRANCH,
-    path: DEFAULT_PATH
-  }
+  defaultStore: EnvPluginStore = {}
 
   rules: InitxMatcherRules = [
     {
       matching: 'env',
-      description: 'Env vars from a private repo: env list | pull | set | push | rm | setup | apply | run',
-      // matchinitx 的字符串匹配是**精确相等**，所以这里必须把子命令列全；
-      // 带 undefined 是为了让裸 `npx initx env`（什么都不带）也能进来打帮助。
+      description: 'Env vars from private vaults: env list | pull | set | unset | push | rm | run | profile',
+      // matchinitx 的字符串匹配是**精确相等**，所以子命令必须列全；
+      // 带 undefined 是为了让裸 `npx initx env` 也能进来打帮助。
       optional: [undefined, ...ENV_ACTIONS]
-    },
-    {
-      matching: 'env-config',
-      description: 'Configure GitHub/GitLab vault storage and check connectivity',
-      optional: [undefined, ...CONFIG_ACTIONS]
     }
   ]
 
@@ -55,27 +48,24 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
     ctx: InitxContext<EnvPluginStore>,
     ...args: (string | undefined)[]
   ): Promise<void> {
-    // 裸 `npx initx env` 时 matcher 会塞一个 undefined 进来，先滤掉
     const rest = args.filter((arg): arg is string => typeof arg === 'string')
     const options = createCliOptions(
       ctx.cliOptions as Record<string, unknown>,
       ctx.optionsList
     )
-    // Local stub installs can load a different utils instance from the CLI.
     logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info')
+
     const store = (ctx.store ?? {}) as EnvPluginStore
 
-    if (ctx.key === 'env-config') {
-      if (rest[0] === 'help' || options.boolean('help')) {
-        printConfigHelp()
-        return
-      }
-
-      await handleEnvConfig(store, rest, options)
-      return
+    // 迁移在任何命令之前，且只会在旧配置存在时动一次。
+    const migration = migrateLegacyStore(store)
+    if (migration.changed) {
+      logger.warn(`检测到旧配置，已迁移到 profile 模式：${migration.created.map(name => `"${name}"`).join('、') || '（无新建）'}`)
+      if (migration.removed.length)
+        logger.info(`  已清除旧字段：${migration.removed.join('、')}`)
     }
 
-    // Help is read only from parsed prefix options, never from the raw -- tail.
+    // Help 只认前缀参数，不认 `--` 之后的透传。
     if (rest[0] === 'run' && !options.boolean('help') && !options.boolean('h')) {
       await handleEnvRun({ store, options }, rest.slice(1))
       return
@@ -87,6 +77,15 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
     }
 
     const [action, ...params] = rest
+
+    if (action === 'profile') {
+      const [sub, ...profileArgs] = params
+      if (!sub || sub === 'help')
+        printProfileHelp()
+      else
+        await handleProfile({ store, options }, sub, profileArgs)
+      return
+    }
 
     if (action === 'apply') {
       await handleEnvApply({ store, options }, params)
@@ -106,7 +105,7 @@ function printEnvHelp(): void {
   logger.info(`
 用法：npx initx env <命令>
 
-  list                        列出 vault 仓库里所有 store
+  list                        列出当前 profile 下 vault 里的所有 store
   pull [store]                拉取到本地 .env（不写名字就列出来选）
                               --to .env.local  指定目标文件（可逗号分隔多个）
                               --dry-run        只看会改哪些键，不写文件
@@ -122,45 +121,46 @@ function printEnvHelp(): void {
   rm <store>                  删除整个 store（store 名就是目录名）
                               --dry-run          只报告，不删除
                               --keep-files       保留 _files 下的文件对象
-                                                 默认连文件一起删
-  setup [store]               把 store 注入**本次**运行的环境：
-                              GitHub Actions 里写 $GITHUB_ENV（后续 step 可见）并自动脱敏
-                              本地则打到 stdout（--stdout 强制；--json 输出 JSON）
+  setup [store]               把 store 注入**本次**运行的环境（GitHub Actions 写 GITHUB_ENV；
+                              本地打到 stdout，可加 --stdout / --json）
   apply <store> --repo o/r    把 store 写进某个仓库的 Actions secrets
-                              --target-token <pat>  独立 GitHub 目标凭据
-                              --env <环境名>     写环境级 secret
-                              --only A,B         只写这几个
-                              --dry-run          只列出将写入的名字
-                              --skip-invalid     跳过名字不合法的变量（默认中止）
-  file add <store> KEY --file <path>
-                              上传文件并把变量改成 \${file-<id>} 引用
-                              --as <id>          指定文件 id（默认由 KEY 推导）
-                              --encoding base64  注入 base64 文本（默认 utf8）
-                              --mode 600         落盘权限提示（file pull 使用）
-                              --dry-run          只报告，不上传
-  file ls <store>             列出文件引用与元数据
-  file cat <store> KEY [--show]
-                              查看单个引用；--show 才输出注入值
-  file pull <store> --to-dir <dir>
-                              把文件落盘（默认 600，不覆盖已有文件）
-  file rm <store> KEY [--keep-blob]
-                              删除引用与文件；别的键共用时保留文件
-  file check <store> [--json] 校验缺失 / 大小 / sha / 孤儿 / 悬空元数据
+  file add <store> KEY --file <path>   上传文件并把变量改成文件引用
+  file ls / cat / pull / rm / check    文件引用的查看、落盘、删除与校验
   run <store> -- cmd [args]   直接注入子进程，继承 stdio / cwd，传递退出状态
-                              --token <pat>      临时凭据（CI 推荐 INITX_ENV_TOKEN）
 
-  全部存储命令支持 --config <file>（相对调用者 cwd；默认只读 cwd 的 .initx-env.json）。
-  run 的 --config / --token 放在 -- 前；之后的全部参数原样透传子进程。
-  支持 GitHub / GitLab vault；apply 的 --repo 始终是 GitHub Actions 目标。
-  跨平台 apply 必须设置 --target-token 或 INITX_ENV_TARGET_TOKEN。
+profile 管理：
+  profile setup [name]        新建或覆盖一个 vault profile（最后一步才问名字）
+  profile edit [name]         交互式修改 profile，回车即保持原值
+  profile use [name]          设置默认 profile
+  profile profiles            列出本机所有 profile（* 为默认）
+  profile rm-profile <name>   删除 profile（删默认需 --force）
+  profile status [--offline]  显示当前项目实际生效的 profile 与连通性
 
-  配置 vault 仓库用：npx initx env-config --help
+任何一个命令都可以加 --profile <名字> 临时指定另一套 vault。
+项目里的 .initx-env.json 只写 type/apiBaseUrl/repo 等定位字段，
+插件会据此自动挑选匹配的 profile 并取用它的 token。
 
 示例：
-  npx initx env-config set repo imba97/env-vault
-  npx initx env set mail-peon-publish EXTENSION_ID=abc CHROME_REFRESH_TOKEN=1//0g...
-  npx initx env pull mail-peon-publish
-  npx initx env setup mail-peon-publish --token "$GITHUB_TOKEN"
-  npx initx env apply mail-peon-publish --repo mail-peon/mail-peon
+  npx initx env profile setup
+  npx initx env profile use acewill
+  npx initx env profile profiles
+  npx initx env set mail-peon-publish EXTENSION_ID=abc
+  npx initx env run acewill-npm -- pnpm publish -r
+`)
+}
+
+function printProfileHelp(): void {
+  logger.info(`
+用法：npx initx env profile <命令>
+
+  setup [name]        新建 profile；同名时询问是否覆盖，覆盖不再问名字
+  edit [name]         交互式修改；除 token 外直接回车即保持原值
+  use [name]          设为默认 profile（不带名字则列出让你选）
+  profiles            列出所有 profile（* 标记默认，← 标记当前项目生效的）
+  rm-profile <name>   删除 profile；删默认需 --force，最后一个不能删
+  status              显示当前项目生效的 profile、字段来源与连通性
+
+profile 是一套自包含的 vault 连接：type / apiBaseUrl / repo / branch / path / token。
+本机可以有多套，项目通过 .initx-env.json 的定位字段自动匹配。
 `)
 }

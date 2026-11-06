@@ -69,8 +69,13 @@ export async function handleEnv(ctx: EnvCommandContext, args: string[]): Promise
   }
 }
 
-export function createClient(ctx: EnvCommandContext, extra: { repo?: string } = {}) {
-  const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options), repo: extra.repo })
+export function createClient(ctx: EnvCommandContext) {
+  const config = resolveConfig(ctx.store, {
+    profile: ctx.options.string('profile') || undefined,
+    token: ctx.options.string('token'),
+    config: configFileOption(ctx.options),
+    cwd: ctx.options.string('cwd')
+  })
 
   return { config, client: createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') }) }
 }

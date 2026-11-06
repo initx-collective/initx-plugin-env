@@ -48,10 +48,10 @@ describe('命令分发（走真实匹配器）', () => {
     expect(await run('env', 'pull', 'extra')).toHaveLength(1)
   })
 
-  it('env-config 与 env 互不串门', async () => {
-    expect(await run('env-config', 'set')).toHaveLength(1)
-    expect(await run('env-config', 'status')).toHaveLength(1)
-    // `status` 只属于 env-config，不该落进 env
+  it('profile 子命令与 env 顶层互不串门', async () => {
+    expect(await run('env', 'profile')).toHaveLength(1)
+    expect(await run('env', 'profile', 'profiles')).toHaveLength(1)
+    // `status` 只在 profile 下，不该落进 env 顶层
     expect(await run('env', 'status')).toHaveLength(0)
   })
 

@@ -100,7 +100,7 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     let detail = ''
     if (stage === '读取 store' && config) {
       if (ctx.options.boolean('debug') || ctx.options.boolean('d'))
-        logger.debug(colorText(`env run: 后端=${config.type}，配置来源=${config.configSource === 'local/env/default' ? '本地或环境变量' : '项目文件'}，凭据来源=${config.tokenSource}`, 'gray'))
+        logger.debug(colorText(`env run: 后端=${config.type}，profile=${config.profile}（来自 ${config.profileSource}），凭据来源=${config.tokenSource}`, 'gray'))
       if (error instanceof StorageError)
         detail = `：${new StorageError(error.code, error.status).message}`
       else if (error instanceof StoreReadError)

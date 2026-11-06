@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe.each(['github', 'gitlab'] as const)('%s empty vault contract', (type: StorageType) => {
   it.each([undefined, 'release/custom'])('creates the first store on branch %s and can read it afterwards', async (branch) => {
-    const config = resolveConfig({}, { type, repo: 'group/vault', token: 'fake-only', branch, env: {}, cwd: '__no_project_config__' })
+    const config = resolveConfig({ profiles: { only: { type, apiBaseUrl: type === 'github' ? 'https://api.github.com' : 'https://gitlab.example/api/v4', repo: 'group/vault', branch, token: 'fake-only' } } }, { env: {}, cwd: '__no_project_config__' })
     expect(config.branch).toBe(branch || 'main')
     let content: string | undefined
     const writes: RequestInit[] = []
@@ -51,7 +51,7 @@ describe.each(['github', 'gitlab'] as const)('%s empty vault contract', (type: S
   })
 
   it('preserves create conflict detection if another writer initializes the same file first', async () => {
-    const config = resolveConfig({}, { type, repo: 'group/vault', token: 'fake-only', env: {}, cwd: '__no_project_config__' })
+    const config = resolveConfig({ profiles: { only: { type, apiBaseUrl: type === 'github' ? 'https://api.github.com' : 'https://gitlab.example/api/v4', repo: 'group/vault', token: 'fake-only' } } }, { env: {}, cwd: '__no_project_config__' })
     let initialized = false
     let writes = 0
     vi.stubGlobal('fetch', vi.fn(async (value, init = {}) => {

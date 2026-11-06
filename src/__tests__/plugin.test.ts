@@ -18,24 +18,19 @@ describe('插件规则', () => {
 
     expect(rule).toBeDefined()
 
-    for (const action of ['list', 'ls', 'pull', 'set', 'push', 'setup', 'apply', 'run'])
+    for (const action of ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'setup', 'apply', 'run', 'file', 'profile'])
       expect(rule?.optional).toContain(action)
 
     // 裸 `npx initx env` 也要能进来打帮助
     expect(rule?.optional).toContain(undefined)
   })
 
-  it('env 和 env-config 是两条精确规则（不用正则以避免多命中弹选择器）', () => {
-    expect(rules.map(rule => rule.matching)).toEqual(['env', 'env-config'])
-
-    const configRule = rules.find(item => item.matching === 'env-config')
-
-    for (const action of ['setup', 'set', 'get', 'list', 'rm', 'status'])
-      expect(configRule?.optional).toContain(action)
+  it('只剩 env 一条规则（env-config 已并入 profile 子命令）', () => {
+    expect(rules.map(rule => rule.matching)).toEqual(['env'])
   })
 
-  it('defaultStore 给出默认分支与目录', () => {
-    expect(plugin.defaultStore).toEqual({ branch: 'main', path: 'stores' })
+  it('defaultStore 为空——唯一真相是 profiles，不预置定位字段', () => {
+    expect(plugin.defaultStore).toEqual({})
   })
 })
 

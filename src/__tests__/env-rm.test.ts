@@ -83,7 +83,7 @@ afterEach(async () => {
 describe('rm 删除整个 store', () => {
   it('删除 store 的 env.json，并带上版本做条件删除', async () => {
     stub({ store: storeWithVars({ A: '1', B: '2' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['rm', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['rm', 'demo'])
 
     expect(storeDelete()).toBeDefined()
     expect(removes()).toHaveLength(1)
@@ -93,33 +93,33 @@ describe('rm 删除整个 store', () => {
   it('rm / remove / delete 三个别名等价', async () => {
     for (const action of ['rm', 'remove', 'delete']) {
       stub({ store: storeWithVars({ A: '1' }) })
-      await handleEnv({ store: {}, options: createCliOptions() }, [action, 'demo'])
+      await handleEnv({ store: harness.testStore(), options: createCliOptions() }, [action, 'demo'])
       expect(removes(), `${action} 应该发出一次删除`).toHaveLength(1)
     }
   })
 
   it('缺 store 名时报用法错误，不发任何请求', async () => {
     stub()
-    await expect(handleEnv({ store: {}, options: createCliOptions() }, ['rm'])).rejects.toThrow(/用法/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['rm'])).rejects.toThrow(/用法/)
     expect(requests).toEqual([])
   })
 
   it('store 不存在时报错，不发删除', async () => {
     stub()
-    await expect(handleEnv({ store: {}, options: createCliOptions() }, ['rm', 'demo'])).rejects.toThrow(/没有 store/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['rm', 'demo'])).rejects.toThrow(/没有 store/)
     expect(removes()).toEqual([])
   })
 
   it('--dry-run 只报告，不删除', async () => {
     stub({ store: storeWithVars({ A: '1' }) })
-    await handleEnv({ store: {}, options: createCliOptions({ 'dry-run': true }) }, ['rm', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ 'dry-run': true }) }, ['rm', 'demo'])
     expect(removes()).toEqual([])
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('--dry-run'))
   })
 
   it('默认连 _files 下的文件对象一起删掉', async () => {
     stub({ store: storeWithFiles({ A: '${file-key}' }, { key: fileEntry() }), file: keyBytes })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['rm', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['rm', 'demo'])
 
     expect(removes().some(r => String(r.url).includes('/_files/key'))).toBe(true)
     expect(storeDelete()).toBeDefined()
@@ -127,7 +127,7 @@ describe('rm 删除整个 store', () => {
 
   it('--keep-files 保留文件对象', async () => {
     stub({ store: storeWithFiles({ A: '${file-key}' }, { key: fileEntry() }), file: keyBytes })
-    await handleEnv({ store: {}, options: createCliOptions({ 'keep-files': true }) }, ['rm', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ 'keep-files': true }) }, ['rm', 'demo'])
 
     expect(removes().some(r => String(r.url).includes('/_files/'))).toBe(false)
     expect(storeDelete()).toBeDefined()
@@ -137,7 +137,7 @@ describe('rm 删除整个 store', () => {
 describe('unset 删除单个变量', () => {
   it('删除普通变量并写回 store', async () => {
     stub({ store: storeWithVars({ A: '1', B: '2' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A'])
 
     expect(savedStore().vars).toEqual({ B: '2' })
     expect(removes().some(r => String(r.url).includes('/_files/'))).toBe(false)
@@ -145,13 +145,13 @@ describe('unset 删除单个变量', () => {
 
   it('一次删多个变量', async () => {
     stub({ store: storeWithVars({ A: '1', B: '2', C: '3' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A', 'C'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A', 'C'])
     expect(savedStore().vars).toEqual({ B: '2' })
   })
 
   it('删的是 file 引用时，连 _files 下文件一起删', async () => {
     stub({ store: storeWithFiles({ A: '${file-key}', B: '2' }, { key: fileEntry() }), file: keyBytes })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A'])
 
     expect(removes().some(r => String(r.url).includes('/_files/key'))).toBe(true)
     const saved = savedStore()
@@ -161,7 +161,7 @@ describe('unset 删除单个变量', () => {
 
   it('文件仍被其他键引用时保留，只删引用', async () => {
     stub({ store: storeWithFiles({ A: '${file-key}', B: '${file-key}' }, { key: fileEntry() }), file: keyBytes })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A'])
 
     expect(removes().some(r => String(r.url).includes('/_files/'))).toBe(false)
     expect(savedStore().vars).toEqual({ B: '${file-key}' })
@@ -169,25 +169,25 @@ describe('unset 删除单个变量', () => {
 
   it('变量删光后连 store 本身一起删掉', async () => {
     stub({ store: storeWithVars({ A: '1' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A'])
     expect(storeDelete()).toBeDefined()
   })
 
   it('缺 KEY 时报用法错误', async () => {
     stub()
-    await expect(handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo'])).rejects.toThrow(/用法/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo'])).rejects.toThrow(/用法/)
     expect(requests).toEqual([])
   })
 
   it('kEYS 全都不存在时报错，不写任何东西', async () => {
     stub({ store: storeWithVars({ A: '1' }) })
-    await expect(handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'X'])).rejects.toThrow(/没有这些变量/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'X'])).rejects.toThrow(/没有这些变量/)
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('部分键不存在时，删掉存在的并警告', async () => {
     stub({ store: storeWithVars({ A: '1', B: '2' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A', 'X'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A', 'X'])
 
     expect(savedStore().vars).toEqual({ B: '2' })
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('原本就不存在'))
@@ -195,7 +195,7 @@ describe('unset 删除单个变量', () => {
 
   it('部分键不存在且剩下的全删光时，仍删整个 store', async () => {
     stub({ store: storeWithVars({ A: '1' }) })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['unset', 'demo', 'A', 'X'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['unset', 'demo', 'A', 'X'])
 
     expect(storeDelete()).toBeDefined()
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('原本就不存在'))

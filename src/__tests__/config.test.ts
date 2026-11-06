@@ -1,34 +1,152 @@
+import type { EnvPluginStore } from '../config'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig, resolveToken } from '../config'
+import { isValidProfileName, matchProfile, normalizeProfileName } from '../profile'
 
-describe('配置解析（同一份可注入环境，不回写）', () => {
-  const local = { repo: 'local/vault', token: 'local-token', branch: 'local', path: 'local-stores' }
-  const env = { INITX_ENV_REPO: 'ci/vault', INITX_ENV_BRANCH: 'ci', INITX_ENV_PATH: 'ci-stores', INITX_ENV_TOKEN: 'ci-token', GH_TOKEN: 'gh', GITHUB_TOKEN: 'github' }
+const githubProfile = {
+  type: 'github' as const,
+  apiBaseUrl: 'https://api.github.com',
+  repo: 'me/vault',
+  branch: 'main',
+  path: 'stores',
+  token: 'gh-token'
+}
 
-  it('所有配置遵循 override > env > local > default', () => {
-    const snapshot = { ...local }
-    expect(resolveConfig(local, { env })).toMatchObject({ repo: 'ci/vault', branch: 'ci', path: 'ci-stores', token: 'ci-token' })
-    expect(resolveConfig(local, { env, repo: 'flag/vault', branch: 'flag', path: 'flag-stores', token: 'flag-token' })).toMatchObject({ repo: 'flag/vault', branch: 'flag', path: 'flag-stores', token: 'flag-token', tokenSource: 'flag' })
-    expect(resolveConfig(local, { env: {} })).toMatchObject(local)
-    expect(resolveConfig({ repo: local.repo, token: local.token }, { env: {} })).toMatchObject({ branch: 'main', path: 'stores' })
-    expect(local).toEqual(snapshot)
+const gitlabProfile = {
+  type: 'gitlab' as const,
+  apiBaseUrl: 'https://gitlab.acewill.cn/api/v4',
+  repo: 'imba97/env',
+  branch: 'main',
+  path: 'stores',
+  token: 'gl-token'
+}
+
+function store(): EnvPluginStore {
+  return {
+    defaultProfile: 'default',
+    profiles: { default: githubProfile, acewill: gitlabProfile }
+  }
+}
+
+describe('profile 解析（无项目文件时用默认 profile）', () => {
+  it('回落到 defaultProfile', () => {
+    const config = resolveConfig(store(), { env: {} })
+    expect(config).toMatchObject({
+      profile: 'default',
+      profileSource: 'default',
+      type: 'github',
+      repo: 'me/vault',
+      token: 'gh-token',
+      tokenSource: 'profile'
+    })
   })
 
-  it('空值逐级回退，不读取真实进程环境', () => {
-    const empty = { repo: '', branch: '', path: '', token: '' }
-    expect(resolveConfig(local, { ...empty, env: { INITX_ENV_REPO: '', INITX_ENV_BRANCH: '', INITX_ENV_PATH: '', INITX_ENV_TOKEN: '', GH_TOKEN: '', GITHUB_TOKEN: '' } })).toMatchObject(local)
-    expect(resolveConfig({ repo: local.repo, token: local.token, branch: '', path: '' }, { ...empty, env: {} })).toMatchObject({ branch: 'main', path: 'stores' })
-    expect(() => resolveConfig({}, { env: {} })).toThrow(/vault/)
-    expect(() => resolveConfig({ repo: 'bad', token: 'fake' }, { env: {} })).toThrow(/owner\/repo/)
-    expect(() => resolveConfig({ repo: 'o/r' }, { env: {} })).toThrow(/token/)
+  it('--profile 显式指定优先于默认', () => {
+    const config = resolveConfig(store(), { profile: 'acewill', env: {} })
+    expect(config).toMatchObject({ profile: 'acewill', profileSource: 'flag', token: 'gl-token' })
   })
 
-  it('凭据 Token 优先级保持兼容', () => {
-    expect(resolveToken(local, { env, token: 'flag' })).toEqual({ token: 'flag', source: 'flag' })
-    expect(resolveToken(local, { env })).toEqual({ token: 'ci-token', source: 'INITX_ENV_TOKEN' })
-    expect(resolveToken(local, { env: { GH_TOKEN: 'gh', GITHUB_TOKEN: 'github' } })).toEqual({ token: 'gh', source: 'GH_TOKEN' })
-    expect(resolveToken(local, { env: { GITHUB_TOKEN: 'github' } })).toEqual({ token: 'github', source: 'GITHUB_TOKEN' })
-    expect(resolveToken(local, { env: {} })).toEqual({ token: local.token, source: 'config' })
-    expect(resolveToken({}, { env: {} })).toEqual({ token: '', source: 'none' })
+  it('显式指定不存在的 profile 时报错并列出已有的', () => {
+    expect(() => resolveConfig(store(), { profile: 'nope', env: {} }))
+      .toThrow(/profile "nope" 不存在[\s\S]*acewill、default/)
+  })
+
+  it('没有任何 profile 时提示 setup', () => {
+    expect(() => resolveConfig({ profiles: {} }, { env: {} })).toThrow(/env setup/)
+  })
+
+  it('iNITX_ENV_TOKEN 覆盖 profile 里的 token', () => {
+    const config = resolveConfig(store(), { env: { INITX_ENV_TOKEN: 'ci-token' } })
+    expect(config.token).toBe('ci-token')
+    expect(config.tokenSource).toBe('INITX_ENV_TOKEN')
+  })
+
+  it('--token 优先级最高', () => {
+    const result = resolveToken(store(), { token: 'flag-token', env: { INITX_ENV_TOKEN: 'ci' } })
+    expect(result).toEqual({ token: 'flag-token', source: 'flag' })
+  })
+
+  it('profile 缺 token 时报错提示 edit', () => {
+    expect(() => resolveConfig({ profiles: { x: { ...githubProfile, token: undefined } } }, { env: {} }))
+      .toThrow(/env edit x/)
+  })
+
+  it('profile 缺 repo 时报错', () => {
+    expect(() => resolveConfig({ profiles: { x: { ...githubProfile, repo: '' } } }, { env: {} }))
+      .toThrow(/vault 仓库/)
+  })
+
+  it('缺省 branch/path 时补默认值', () => {
+    const config = resolveConfig(
+      { profiles: { x: { type: 'github', apiBaseUrl: 'https://api.github.com', repo: 'a/b', token: 't' } } },
+      { env: {} }
+    )
+    expect(config).toMatchObject({ branch: 'main', path: 'stores' })
+  })
+})
+
+describe('matchProfile 自动匹配', () => {
+  const profiles = {
+    default: githubProfile,
+    envA: { ...gitlabProfile, repo: 'imba97/env' },
+    envB: { ...gitlabProfile, repo: 'imba97/other' }
+  }
+
+  it('同后端只有一个时直接命中', () => {
+    const result = matchProfile({ default: githubProfile }, {
+      type: 'github',
+      apiBaseUrl: 'https://api.github.com',
+      repo: 'irrelevant'
+    })
+    expect(result.reason).toBe('matched')
+    expect(result.matched?.name).toBe('default')
+  })
+
+  it('同后端多个时用 repo 唯一区分', () => {
+    const result = matchProfile(profiles, {
+      type: 'gitlab',
+      apiBaseUrl: 'https://gitlab.acewill.cn/api/v4',
+      repo: 'imba97/other'
+    })
+    expect(result.reason).toBe('matched')
+    expect(result.matched?.name).toBe('envB')
+  })
+
+  it('同后端多个且 repo 也没命中时返回候选', () => {
+    const result = matchProfile(profiles, {
+      type: 'gitlab',
+      apiBaseUrl: 'https://gitlab.acewill.cn/api/v4',
+      repo: 'unknown/repo'
+    })
+    expect(result.reason).toBe('ambiguous')
+    expect(result.candidates.map(c => c.name)).toEqual(['envA', 'envB'])
+  })
+
+  it('后端不同时不做匹配', () => {
+    const result = matchProfile(profiles, {
+      type: 'gitlab',
+      apiBaseUrl: 'https://gitlab.com/api/v4',
+      repo: 'imba97/env'
+    })
+    expect(result.reason).toBe('none')
+  })
+})
+
+describe('profile 名校验', () => {
+  it('接受小写字母数字与连字符下划线', () => {
+    expect(isValidProfileName('acewill')).toBe(true)
+    expect(isValidProfileName('my-env_2')).toBe(true)
+  })
+
+  it('拒绝大写、空格与路径分隔符', () => {
+    expect(isValidProfileName('Acewill')).toBe(false)
+    expect(isValidProfileName('my env')).toBe(false)
+    expect(isValidProfileName('a/b')).toBe(false)
+    expect(() => normalizeProfileName('  ')).toThrow(/不能为空/)
+    expect(() => normalizeProfileName('Bad')).toThrow(/不合法/)
+  })
+
+  it('trim 后返回', () => {
+    expect(normalizeProfileName('  acewill  ')).toBe('acewill')
   })
 })

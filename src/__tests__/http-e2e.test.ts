@@ -25,6 +25,7 @@ let server: Server
 let store: Store | null
 let files: Map<string, Buffer>
 let version = 0
+let loopbackBaseUrl = ''
 
 function json(response: import('node:http').ServerResponse, status: number, body?: unknown): void {
   response.statusCode = status
@@ -127,11 +128,10 @@ beforeEach(async () => {
   files = new Map()
   version = 0
   const baseUrl = await startServer()
-  vi.stubEnv('INITX_ENV_API_BASE_URL', baseUrl)
-  vi.stubEnv('INITX_ENV_REPO', 'fake/vault')
   vi.stubEnv('INITX_ENV_TOKEN', 'token')
-  vi.stubEnv('INITX_ENV_BRANCH', 'main')
-  vi.stubEnv('INITX_ENV_PATH', 'test-stores')
+  // 定位改由项目文件提供：重构后环境变量不再覆盖 vault 位置。
+  loopbackBaseUrl = baseUrl
+  await writeFile(join(directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type: 'github', apiBaseUrl: baseUrl, repo: 'fake/vault', branch: 'main', path: 'test-stores' } }))
   vi.stubEnv('GH_TOKEN', '')
   vi.stubEnv('GITHUB_TOKEN', '')
   vi.clearAllMocks()
@@ -147,20 +147,22 @@ afterEach(async () => {
 
 describe('file refs over a real HTTP loopback', () => {
   it('runs add → pull → check → file pull → push --update-files', async () => {
+    /** 插件配置只用 profiles；store 内容由 loopback 回填到外层变量 */
+    const pluginStore = { profiles: { default: { type: 'github' as const, apiBaseUrl: loopbackBaseUrl, repo: 'fake/vault', branch: 'main', path: 'test-stores', token: 'token' } } }
     const pem = '-----BEGIN KEY-----\nABC\n-----END KEY-----\n'
     const source = join(directory, 'key.pem')
     await writeFile(source, pem)
 
-    await handleEnvFile({ store: {}, options: createCliOptions({ file: source, as: 'key' }) }, ['add', 'demo', 'KEY'])
+    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, file: source, as: 'key' }) }, ['add', 'demo', 'KEY'])
     expect(store?.vars.KEY).toBe('${file-key}')
     expect(store?.files?.key.bytes).toBe(Buffer.byteLength(pem))
 
     const envPath = join(directory, '.env')
-    await handleEnv({ store: {}, options: createCliOptions({ to: envPath }) }, ['pull', 'demo'])
+    await handleEnv({ store: pluginStore, options: createCliOptions({ cwd: directory, to: envPath }) }, ['pull', 'demo'])
     expect(await readFile(envPath, 'utf8')).toBe('KEY="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\n')
 
     const out = join(directory, 'out')
-    await handleEnvFile({ store: {}, options: createCliOptions({ toDir: out }) }, ['pull', 'demo'])
+    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, toDir: out }) }, ['pull', 'demo'])
     expect(await readFile(join(out, 'key'), 'utf8')).toBe(pem)
 
     let captured = ''
@@ -168,13 +170,13 @@ describe('file refs over a real HTTP loopback', () => {
     console.log = (...args) => {
       captured += `${args.join(' ')}\n`
     }
-    await handleEnvFile({ store: {}, options: createCliOptions({ json: true }) }, ['check', 'demo'])
+    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, json: true }) }, ['check', 'demo'])
     console.log = originalLog
     expect(JSON.parse(captured).problems).toEqual([])
 
     const changed = join(directory, '.env.changed')
     await writeFile(changed, 'KEY=changed\n')
-    await handleEnv({ store: {}, options: createCliOptions({ from: changed, updateFiles: true }) }, ['push', 'demo'])
+    await handleEnv({ store: pluginStore, options: createCliOptions({ cwd: directory, from: changed, updateFiles: true }) }, ['push', 'demo'])
 
     expect(files.get('key')?.toString('utf8')).toBe('changed')
     expect(store?.files?.key.bytes).toBe(7)

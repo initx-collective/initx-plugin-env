@@ -87,21 +87,21 @@ describe('push 与文件引用', () => {
   it('本地内容与文件一致时保留引用且零写入', async () => {
     stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('A="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\n')
-    await handleEnv({ store: {}, options: createCliOptions({ from: path }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path }) }, ['push', 'demo'])
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('内容变化时默认报错，要求显式选择', async () => {
     stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('A=changed\n')
-    await expect(handleEnv({ store: {}, options: createCliOptions({ from: path }) }, ['push', 'demo'])).rejects.toThrow(/--update-files/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path }) }, ['push', 'demo'])).rejects.toThrow(/--update-files/)
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('--update-files 先传文件再更新元数据，引用保持不变', async () => {
     stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('A=changed\n')
-    await handleEnv({ store: {}, options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])
 
     const writes = requests.filter(request => request.init?.method === 'PUT')
     expect(writes).toHaveLength(2)
@@ -115,7 +115,7 @@ describe('push 与文件引用', () => {
   it('--inline 改成普通值并清理文件条目', async () => {
     stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('A=changed\n')
-    await handleEnv({ store: {}, options: createCliOptions({ from: path, inline: true }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, inline: true }) }, ['push', 'demo'])
 
     expect(requests.filter(request => request.init?.method === 'PUT')).toHaveLength(1)
     const store = savedStore()
@@ -125,7 +125,7 @@ describe('push 与文件引用', () => {
 
   it('set 作用在引用键上等价于 --inline', async () => {
     stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
-    await handleEnv({ store: {}, options: createCliOptions() }, ['set', 'demo', 'A=changed'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['set', 'demo', 'A=changed'])
     const store = savedStore()
     expect(store.vars.A).toBe('changed')
     expect(store.files).toBeUndefined()
@@ -140,14 +140,14 @@ describe('push 与文件引用', () => {
       file: keyBytes
     })
     const path = await envFile('A="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\nB=changed\n')
-    await expect(handleEnv({ store: {}, options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])).rejects.toThrow(/本地内容不一致/)
+    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])).rejects.toThrow(/本地内容不一致/)
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('--prune 删除本地没有的引用键并清理文件条目', async () => {
     stub({ store: storeWith({ A: '${file-key}', B: 'plain' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
     const path = await envFile('C=1\n')
-    await handleEnv({ store: {}, options: createCliOptions({ from: path, prune: true }) }, ['push', 'demo'])
+    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, prune: true }) }, ['push', 'demo'])
 
     const store = savedStore()
     expect(store.vars).toEqual({ C: '1' })

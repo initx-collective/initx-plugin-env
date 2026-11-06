@@ -15,7 +15,7 @@ beforeEach(async () => {
   delete harness.env.FORCE_COLOR
   delete harness.env.NO_COLOR
   harness.env.INITX_TEST_HTTP_STATUS = '403'
-  await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type: 'gitlab', repo: 'fake/vault' } }))
+  await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'fake/vault' } }))
   await writeFile(join(harness.directory, '.env'), 'A=dummy-local-value\n')
   host = join(harness.directory, 'minified-plugin-host.mjs')
   await build({
@@ -29,7 +29,8 @@ beforeEach(async () => {
           if (status !== 200) return new Response('private-upstream-sentinel', {status});
           return Response.json({type:'file',sha:'version',last_commit_id:'version',encoding:'base64',content:Buffer.from(JSON.stringify({schema:1,vars:{A:'dummy-remote-value'}})).toString('base64')});
         };
-        await new EnvPlugin().handle({key:process.env.INITX_TEST_KEY || 'env',store:{},cliOptions:JSON.parse(process.env.INITX_TEST_OPTIONS),optionsList:[]}, ...JSON.parse(process.env.INITX_TEST_ARGS));
+        const store = { profiles: { default: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'fake/vault', token: 'fake-bootstrap-token' } } };
+        await new EnvPlugin().handle({key:process.env.INITX_TEST_KEY || 'env',store,cliOptions:JSON.parse(process.env.INITX_TEST_OPTIONS),optionsList:[]}, ...JSON.parse(process.env.INITX_TEST_ARGS));
       `
     },
     outfile: host,
@@ -58,10 +59,8 @@ async function execute(args: string[], options: Record<string, unknown> = {}) {
 }
 
 describe('plugin command error boundary in a minified subprocess', () => {
-  it.each(['list', 'pull', 'set', 'push', 'apply', 'status'])('%s reports only the error message and exits nonzero', async (action) => {
-    if (action === 'status')
-      harness.env.INITX_TEST_KEY = 'env-config'
-    const result = await execute(action === 'set' ? ['set', 'demo', 'A=dummy-local-value'] : [action, 'demo'], { targetToken: 'fake-target-token' })
+  it.each(['list', 'pull', 'set', 'push', 'apply', 'profile status'])('%s reports only the error message and exits nonzero', async (action) => {
+    const result = await execute(action === 'set' ? ['set', 'demo', 'A=dummy-local-value'] : action.split(' ').concat('demo'), { targetToken: 'fake-target-token' })
     expect(result.code).toBe(1)
     expect(stripVTControlCharacters(result.stdout)).toContain(' ERROR  没有权限，请检查 token 授权与分支保护（HTTP 403）\n')
     expect(result.stderr).toBe('')
@@ -101,8 +100,7 @@ describe('plugin command error boundary in a minified subprocess', () => {
 
   it('highlights status values blue and keeps token values masked', async () => {
     harness.env.FORCE_COLOR = '1'
-    harness.env.INITX_TEST_KEY = 'env-config'
-    const result = await execute(['status'], { offline: true })
+    const result = await execute(['profile', 'status'], { offline: true })
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('\x1B[34mgitlab\x1B[0m')
     expect(result.stdout).toContain('\x1B[33m***\x1B[0m')
