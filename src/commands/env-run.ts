@@ -108,7 +108,9 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
       else if (error instanceof FileRefError)
         detail = `：${error.message}`
     }
-    else if (stage === '变量校验' || stage === '参数') {
+    else if (stage === '变量校验' || stage === '参数' || stage === '配置') {
+      // 配置阶段的错误来自本地解析（缺 profile、缺 repo、缺 token 等），
+      // 不含响应体或 token，必须原样透出，否则只剩一句无从下手的“配置失败”。
       detail = `：${(error as Error).message}`
     }
     logger.error(colorText(`env run: ${stage}失败${detail}`, 'red'))

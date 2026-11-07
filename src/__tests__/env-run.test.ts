@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { createRunEnv, parseRunArgs } from '../commands/env-run'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { logger } from '@initx-plugin/utils'
+import { describe, expect, it, vi } from 'vitest'
+import { createRunEnv, handleEnvRun, parseRunArgs } from '../commands/env-run'
 
 describe('run 参数及环境校验', () => {
   it('保留每个尾部参数，独立校验分隔符和命令', () => {
@@ -28,5 +32,44 @@ describe('run 参数及环境校验', () => {
       expect(() => createRunEnv({ [key]: 'secret-sentinel' }, {})).toThrow(/变量名/)
     expect(() => createRunEnv({ KEY: 'secret-sentinel\0' }, {})).toThrow('变量 "KEY" 必须是字符串且不能包含 NUL')
     expect(createRunEnv({}, { KEEP: 'yes' })).toEqual({ KEEP: 'yes' })
+  })
+})
+
+describe('run 错误输出', () => {
+  /** 造一个最小 ctx：handleEnvRun 只读 store、options.raw 和几个取值方法。 */
+  function makeCtx(raw: Record<string, unknown> = {}) {
+    return {
+      store: {},
+      options: {
+        raw,
+        string: (key: string) => raw[key] as string | undefined,
+        boolean: (key: string) => Boolean(raw[key])
+      }
+    } as unknown as Parameters<typeof handleEnvRun>[0]
+  }
+
+  it('配置阶段失败时透出真实原因，而不是只留一句配置失败', async () => {
+    // 空 store + 指向一个空 storage 的项目文件，命中 resolveConfig 的 ProfileError
+    const dir = mkdtempSync(join(tmpdir(), 'initx-env-run-'))
+    const file = join(dir, '.initx-env.json')
+    writeFileSync(file, JSON.stringify({ schema: 1, storage: { type: 'gitlab', repo: '' } }), 'utf8')
+
+    const logs: string[] = []
+    const spy = vi.spyOn(logger, 'error').mockImplementation((msg: unknown) => {
+      logs.push(String(msg))
+    })
+
+    try {
+      // args 只放 store 名；子进程命令走 raw['--']
+      await handleEnvRun(makeCtx({ 'config': file, '--': ['env'] }), ['acewill-npm'])
+    }
+    finally {
+      spy.mockRestore()
+    }
+
+    const output = logs.join('\n')
+    expect(output).toContain('配置失败')
+    // 关键是冒号后要有内容：证明 detail 没有被丢掉
+    expect(output).toMatch(/配置失败：\S/)
   })
 })
