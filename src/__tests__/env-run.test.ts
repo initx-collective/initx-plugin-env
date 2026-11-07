@@ -72,4 +72,25 @@ describe('run 错误输出', () => {
     // 关键是冒号后要有内容：证明 detail 没有被丢掉
     expect(output).toMatch(/配置失败：\S/)
   })
+
+  it('变量校验阶段的坏变量名原样报出，且不泄露变量值', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'initx-env-run-'))
+    const file = join(dir, '.initx-env.json')
+    writeFileSync(file, JSON.stringify({
+      schema: 1,
+      storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.acewill.cn/api/v4', repo: 'imba97/env' }
+    }), 'utf8')
+
+    // 直接测 createRunEnv 的报错形态：这是变量校验阶段唯一会给用户看的文案来源。
+    let message = ''
+    try {
+      createRunEnv({ 'my-key': 'secret-sentinel' }, {})
+    }
+    catch (error) {
+      message = (error as Error).message
+    }
+
+    expect(message).toMatch(/变量名/)
+    expect(message).not.toContain('secret-sentinel')
+  })
 })
