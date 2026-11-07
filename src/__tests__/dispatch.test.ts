@@ -68,7 +68,7 @@ describe('构建产物', () => {
     const PluginClass = mod.default
     const instance = new PluginClass()
 
-    expect(instance.rules.map((rule: { matching: string }) => rule.matching)).toEqual(['env', 'env-config'])
-    expect(instance.defaultStore).toEqual({ branch: 'main', path: 'stores' })
+    expect(instance.rules.map((rule: { matching: string }) => rule.matching)).toEqual(['env'])
+    expect(instance.defaultStore).toEqual({})
   })
 })

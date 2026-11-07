@@ -10,6 +10,13 @@ export const DEFAULT_BRANCH = 'main'
 export const DEFAULT_PATH = 'stores'
 
 /**
+ * 项目文件直接充当 profile 时使用的虚拟名字。
+ *
+ * 只出现在展示与调试信息里，不写回 store，也不会被 `ix env use` 选中。
+ */
+export const PROJECT_PROFILE_NAME = '(project)'
+
+/**
  * 插件本地配置：只有 profiles 一份真相，外加"默认用哪个"。
  *
  * 重构后不再有顶层 repo/token 之类的扁平字段——那些由 `migrateLegacyStore`
@@ -101,6 +108,21 @@ function resolveByProject(
   const target = describeTarget(project.storage.type, project.storage.apiBaseUrl, project.storage.repo)
 
   if (result.reason === 'none') {
+    // CI / 无人值守场景：项目文件里的 storage 已完整描述一个 vault，
+    // 它本身就是一套可用配置，不必在本机再建 profile（token 走 INITX_ENV_TOKEN）。
+    if (project.storage.repo) {
+      return {
+        name: PROJECT_PROFILE_NAME,
+        profile: {
+          type: project.storage.type,
+          apiBaseUrl: project.storage.apiBaseUrl,
+          repo: project.storage.repo,
+          branch: project.storage.branch,
+          path: project.storage.path
+        }
+      }
+    }
+
     const existing = profileNames(store)
     throw new ProfileError(
       `找不到匹配的 profile\n`
@@ -111,7 +133,7 @@ function resolveByProject(
             return `    ${name}  ${describeTarget(p.type, p.apiBaseUrl, p.repo)}`
           }).join('\n')}\n`
           : '  本机还没有任何 profile\n'
-      }  新建：ix env setup\n`
+      }  项目文件缺少 repo，补上或在本地新建：ix env setup\n`
       + `  或临时指定：ix env list --profile <name>`
     )
   }

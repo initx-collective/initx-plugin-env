@@ -1,4 +1,7 @@
 import type { EnvPluginStore } from '../config'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig, resolveToken } from '../config'
 import { isValidProfileName, matchProfile, normalizeProfileName } from '../profile'
@@ -82,6 +85,63 @@ describe('profile 解析（无项目文件时用默认 profile）', () => {
       { env: {} }
     )
     expect(config).toMatchObject({ branch: 'main', path: 'stores' })
+  })
+})
+
+describe('项目文件自身充当 profile（CI 无人值守）', () => {
+  function writeProject(content: unknown): { file: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'initx-env-project-'))
+    const file = join(dir, '.initx-env.json')
+    writeFileSync(file, JSON.stringify(content), 'utf8')
+    return { file }
+  }
+
+  it('本机没有任何 profile 时直接用项目文件定位 vault', () => {
+    const { file } = writeProject({
+      schema: 1,
+      storage: {
+        type: 'gitlab',
+        apiBaseUrl: 'https://gitlab.acewill.cn/api/v4',
+        repo: 'imba97/env',
+        branch: 'main',
+        path: 'stores'
+      }
+    })
+
+    const config = resolveConfig({}, {
+      config: file,
+      env: { INITX_ENV_TOKEN: 'ci-token' }
+    })
+
+    expect(config).toMatchObject({
+      profile: '(project)',
+      profileSource: 'project-match',
+      type: 'gitlab',
+      repo: 'imba97/env',
+      token: 'ci-token',
+      tokenSource: 'INITX_ENV_TOKEN'
+    })
+  })
+
+  it('缺少 INITX_ENV_TOKEN 时仍然报错提示 token', () => {
+    const { file } = writeProject({
+      schema: 1,
+      storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.acewill.cn/api/v4', repo: 'imba97/env' }
+    })
+
+    expect(() => resolveConfig({}, { config: file, env: {} }))
+      .toThrow(/token/)
+  })
+
+  it('本机已有同后端 profile 时仍优先用它，不被项目虚拟 profile 顶替', () => {
+    const { file } = writeProject({
+      schema: 1,
+      storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.acewill.cn/api/v4', repo: 'imba97/env' }
+    })
+
+    const config = resolveConfig(store(), { config: file, env: {} })
+
+    expect(config).toMatchObject({ profile: 'acewill', profileSource: 'project-match' })
   })
 })
 

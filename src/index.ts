@@ -11,7 +11,7 @@ import { handleEnvRun } from './commands/env-run'
 import { migrateLegacyStore } from './store-migrate'
 import { reportCommandError } from './utils/terminal'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'profile', 'help']
+const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'profile', 'profiles', 'help']
 
 export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   /**
@@ -84,6 +84,12 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
         printProfileHelp()
       else
         await handleProfile({ store, options }, sub, profileArgs)
+      return
+    }
+
+    // 顶层别名：`env profiles` 直接列出本机 profile，省掉一层 `profile`。
+    if (action === 'profiles') {
+      await handleProfile({ store, options }, 'profiles', params)
       return
     }
 
@@ -160,7 +166,12 @@ function printProfileHelp(): void {
   rm-profile <name>   删除 profile；删默认需 --force，最后一个不能删
   status              显示当前项目生效的 profile、字段来源与连通性
 
+env profiles 是 env profile profiles 的简写，两者等价。
+
 profile 是一套自包含的 vault 连接：type / apiBaseUrl / repo / branch / path / token。
 本机可以有多套，项目通过 .initx-env.json 的定位字段自动匹配。
+
+CI 等无人值守环境不需要在本机建 profile：.initx-env.json 里写全 storage 即可，
+token 由 INITX_ENV_TOKEN 提供，此时生效的名字显示为 (project)。
 `)
 }
