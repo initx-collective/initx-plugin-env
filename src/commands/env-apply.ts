@@ -47,7 +47,9 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   const config = resolveConfig(ctx.store, {
     token: ctx.options.string('token'),
     project: ctx.project,
-    config: ctx.project === undefined ? configFileOption(ctx.options) : undefined
+    config: ctx.project === undefined
+      ? configFileOption(ctx.options)
+      : undefined
   })
   const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
   const destination = createGitHubActionsTarget(config, ctx.options.string('target-token'))
@@ -72,7 +74,9 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
     .filter(([key]) => !only || only.includes(key))
 
   if (!entries.length) {
-    throw new Error(only?.length ? `--only 里没有任何变量命中 store "${name}"` : `store "${name}" 里没有变量`)
+    throw new Error(only?.length
+      ? `--only 里没有任何变量命中 store "${name}"`
+      : `store "${name}" 里没有变量`)
   }
 
   const problems: string[] = []
@@ -105,13 +109,17 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   const writable = entries.filter(([key]) => !blocked.has(key))
 
   if (ctx.options.boolean('dry-run')) {
-    logger.info(`${colorText('--dry-run', 'yellow')}：将写入 ${writable.length} 个 secret → ${colorText(targetRepo, 'blue')}${targetEnv ? `（环境 ${colorText(targetEnv, 'blue')}）` : '（仓库级）'}`)
+    logger.info(`${colorText('--dry-run', 'yellow')}：将写入 ${writable.length} 个 secret → ${colorText(targetRepo, 'blue')}${targetEnv
+      ? `（环境 ${colorText(targetEnv, 'blue')}）`
+      : '（仓库级）'}`)
     for (const [key] of writable)
       logger.info(`  ${colorText(key, 'blue')}`)
     return
   }
 
-  logger.info(`写入 ${colorText(targetRepo, 'blue')}${targetEnv ? `（环境 ${colorText(targetEnv, 'blue')}）` : '（仓库级）'} …`)
+  logger.info(`写入 ${colorText(targetRepo, 'blue')}${targetEnv
+    ? `（环境 ${colorText(targetEnv, 'blue')}）`
+    : '（仓库级）'} …`)
 
   const failures: string[] = []
 
@@ -119,7 +127,9 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
   for (const [key, value] of writable) {
     try {
       const result = await destination.write(targetRepo, key, value, targetEnv)
-      logger.success(colorText(`${key}: ${result === 'created' ? '新建' : '更新'}`, 'green'))
+      logger.success(colorText(`${key}: ${result === 'created'
+        ? '新建'
+        : '更新'}`, 'green'))
     }
     catch (error) {
       failures.push(key)

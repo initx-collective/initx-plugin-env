@@ -2,7 +2,15 @@ import { logger } from '@initx-plugin/utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStorageAdapter } from '../storage/factory'
 
-const config = { type: 'gitlab' as const, apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'group/vault', branch: 'main', path: 'stores', token: 'private-token-sentinel', debug: true }
+const config = {
+  type: 'gitlab' as const,
+  apiBaseUrl: 'https://gitlab.example/api/v4',
+  repo: 'group/vault',
+  branch: 'main',
+  path: 'stores',
+  token: 'private-token-sentinel',
+  debug: true
+}
 
 beforeEach(() => {
   vi.stubEnv('NO_COLOR', '1')
@@ -23,12 +31,28 @@ describe('opt-in storage diagnostics', () => {
         return Response.json({ message: 'You are not allowed to push into this branch', secret: 'private-response-sentinel' }, { status: 400 })
       if (url.pathname.endsWith('/branches/main'))
         return Response.json({ protected: true, can_push: false, secret: 'private-response-sentinel' })
-      if (url.pathname.includes('/protected_branches/'))
-        return Response.json({ push_access_levels: [{ access_level: 40, user_id: 123, name: 'private-response-sentinel' }] })
-      return Response.json({ empty_repo: empty, archived: false, default_branch: empty ? null : 'main', permissions: { project_access: { access_level: 30 } }, secret: 'private-response-sentinel' })
+      if (url.pathname.includes('/protected_branches/')) {
+        return Response.json({
+          push_access_levels: [
+            { access_level: 40, user_id: 123, name: 'private-response-sentinel' }
+          ]
+        })
+      }
+      return Response.json({
+        empty_repo: empty,
+        archived: false,
+        default_branch: empty ? null : 'main',
+        permissions: {
+          project_access: { access_level: 30 }
+        },
+        secret: 'private-response-sentinel'
+      })
     })
     vi.stubGlobal('fetch', fetch)
-    const result = createStorageAdapter(config).write('stores/demo.json', 'private-store-sentinel', { condition: { kind: 'create' }, message: 'private-commit-sentinel' })
+    const result = createStorageAdapter(config).write('stores/demo.json', 'private-store-sentinel', {
+      condition: { kind: 'create' },
+      message: 'private-commit-sentinel'
+    })
     await expect(result).rejects.toMatchObject({ code: 'permission', status: 400 })
     const output = debug.mock.calls.map(([text]) => text).join('')
     expect(output).toContain('"event":"write-result"')
@@ -45,7 +69,9 @@ describe('opt-in storage diagnostics', () => {
     const debug = vi.spyOn(logger, 'debug').mockImplementation(() => {})
     const fetch = vi.fn(async () => Response.json({ message: 'You are not allowed to push into this branch' }, { status: 400 }))
     vi.stubGlobal('fetch', fetch)
-    await expect(createStorageAdapter({ ...config, debug: false }).write('demo.json', 'secret', { condition: { kind: 'create' } })).rejects.toMatchObject({ code: 'permission' })
+    await expect(createStorageAdapter({ ...config, debug: false }).write('demo.json', 'secret', {
+      condition: { kind: 'create' }
+    })).rejects.toMatchObject({ code: 'permission' })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(debug).not.toHaveBeenCalled()
   })
@@ -57,7 +83,9 @@ describe('opt-in storage diagnostics', () => {
         return new Response(null, { status: 403 })
       throw new Error('private-upstream-network-error')
     }))
-    await expect(createStorageAdapter(config).write('demo.json', 'secret', { condition: { kind: 'create' } })).rejects.toMatchObject({ code: 'permission', status: 403 })
+    await expect(createStorageAdapter(config).write('demo.json', 'secret', {
+      condition: { kind: 'create' }
+    })).rejects.toMatchObject({ code: 'permission', status: 403 })
     const output = debug.mock.calls.map(([text]) => text).join('')
     expect(output).toContain('"event":"unavailable"')
     expect(output).not.toContain('private-upstream')
@@ -70,9 +98,18 @@ describe('opt-in storage diagnostics', () => {
         return Response.json({ message: 'You are not allowed to push into this branch' }, { status: 400 })
       if (String(value).includes('/protected_branches/'))
         return new Response(null, { status: 403 })
-      return Response.json({ empty_repo: true, archived: false, default_branch: 'master', permissions: { project_access: { access_level: 30 } } })
+      return Response.json({
+        empty_repo: true,
+        archived: false,
+        default_branch: 'master',
+        permissions: {
+          project_access: { access_level: 30 }
+        }
+      })
     }))
-    await expect(createStorageAdapter(config).write('demo.json', 'secret', { condition: { kind: 'create' } })).rejects.toMatchObject({ code: 'permission', status: 400 })
+    await expect(createStorageAdapter(config).write('demo.json', 'secret', {
+      condition: { kind: 'create' }
+    })).rejects.toMatchObject({ code: 'permission', status: 400 })
     const output = debug.mock.calls.map(([text]) => text).join('')
     expect(output).toContain('"emptyRepo":true,"archived":false,"accessLevel":30')
     expect(output).toContain('"operation":"protection","event":"request-failed","status":403')
@@ -84,11 +121,15 @@ describe('opt-in storage diagnostics', () => {
     vi.stubGlobal('fetch', vi.fn(async (value, init = {}) => {
       if (init.method)
         return Response.json({}, { status: 201 })
-      return String(value).endsWith('/projects/group%2Fvault') ? Response.json({ empty_repo: true }) : new Response(null, { status: 404 })
+      return String(value).endsWith('/projects/group%2Fvault')
+        ? Response.json({ empty_repo: true })
+        : new Response(null, { status: 404 })
     }))
     const storage = createStorageAdapter(config)
     expect(await storage.read('demo.json')).toBeNull()
-    await storage.write('demo.json', 'private-value', { condition: { kind: 'create' } })
+    await storage.write('demo.json', 'private-value', {
+      condition: { kind: 'create' }
+    })
     expect(debug.mock.calls.map(([text]) => text)).toEqual([
       'GitLab {"operation":"project","event":"empty-repository"}',
       'GitLab {"operation":"file-create","event":"write-result","status":201}'

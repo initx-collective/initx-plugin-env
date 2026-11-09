@@ -1,4 +1,3 @@
-/* eslint-disable unused-imports/no-unused-vars -- Runtime JS fixture; TS6 ESLint scope analysis misclassifies these value references. */
 import { appendFileSync } from 'node:fs'
 import process from 'node:process'
 
@@ -13,7 +12,11 @@ process.on('message', (signal) => {
     process.emit(signal)
 })
 const result = await runProcess(process.argv[2], process.argv.slice(3), process.env)
-appendFileSync(process.env.INITX_TEST_EVENTS, `${JSON.stringify({ result, before, after: ['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal)) })}\n`)
+appendFileSync(process.env.INITX_TEST_EVENTS, `${JSON.stringify({
+  result,
+  before,
+  after: ['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal))
+})}\n`)
 applyRunResult(result)
 if (process.connected)
   process.disconnect()

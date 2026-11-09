@@ -24,7 +24,9 @@ describe('terminal formatting', () => {
   it.each(['NO_COLOR', 'FORCE_COLOR'] as const)('respects %s when disabling colors', (key) => {
     vi.stubEnv('FORCE_COLOR', '1')
     vi.stubEnv('NO_COLOR', undefined)
-    vi.stubEnv(key, key === 'NO_COLOR' ? '' : '0')
+    vi.stubEnv(key, key === 'NO_COLOR'
+      ? ''
+      : '0')
     expect(colorText('failure', 'red', 'stderr')).toBe('failure')
   })
 

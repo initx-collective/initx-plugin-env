@@ -16,7 +16,9 @@ function normalizeBase(basePath: string): string {
 
 export function storeFilesDir(basePath: string, store: string): string {
   const base = normalizeBase(basePath)
-  const path = base ? `${base}/${store}/${FILES_DIR}` : `${store}/${FILES_DIR}`
+  const path = base
+    ? `${base}/${store}/${FILES_DIR}`
+    : `${store}/${FILES_DIR}`
 
   assertSafePath(path)
 

@@ -69,5 +69,7 @@ export async function putSecret(
   )
 
   // 官方行为：201 = 新建，204 = 更新
-  return res.status === 201 ? 'created' : 'updated'
+  return res.status === 201
+    ? 'created'
+    : 'updated'
 }

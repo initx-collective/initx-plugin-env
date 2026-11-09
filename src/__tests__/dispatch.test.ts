@@ -24,14 +24,27 @@ function run(key: string, ...others: string[]) {
   const plugin = new EnvPlugin()
 
   return plugin.run(
-    { key, cliOptions: {}, optionsList: [], packageInfo },
+    {
+      key,
+      cliOptions: {},
+      optionsList: [],
+      packageInfo
+    },
     ...others
   )
 }
 
 describe('命令分发（走真实匹配器）', () => {
   it('每个已声明的子命令都能命中恰好一个 handler', async () => {
-    for (const action of ['list', 'pull', 'set', 'push', 'setup', 'apply', 'run']) {
+    for (const action of [
+      'list',
+      'pull',
+      'set',
+      'push',
+      'setup',
+      'apply',
+      'run'
+    ]) {
       const handlers = await run('env', action)
 
       expect(handlers, `env ${action}`).toHaveLength(1)

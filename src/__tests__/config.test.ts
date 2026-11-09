@@ -59,29 +59,51 @@ describe('profile 解析（无项目文件时用默认 profile）', () => {
   })
 
   it('iNITX_ENV_TOKEN 覆盖 profile 里的 token', () => {
-    const config = resolveConfig(store(), { env: { INITX_ENV_TOKEN: 'ci-token' } })
+    const config = resolveConfig(store(), {
+      env: { INITX_ENV_TOKEN: 'ci-token' }
+    })
     expect(config.token).toBe('ci-token')
     expect(config.tokenSource).toBe('INITX_ENV_TOKEN')
   })
 
   it('--token 优先级最高', () => {
-    const result = resolveToken(store(), { token: 'flag-token', env: { INITX_ENV_TOKEN: 'ci' } })
+    const result = resolveToken(store(), {
+      token: 'flag-token',
+      env: { INITX_ENV_TOKEN: 'ci' }
+    })
     expect(result).toEqual({ token: 'flag-token', source: 'flag' })
   })
 
   it('profile 缺 token 时报错提示 edit', () => {
-    expect(() => resolveConfig({ profiles: { x: { ...githubProfile, token: undefined } } }, { env: {} }))
+    expect(() => resolveConfig({
+      profiles: {
+        x: { ...githubProfile, token: undefined }
+      }
+    }, { env: {} }))
       .toThrow(/env edit x/)
   })
 
   it('profile 缺 repo 时报错', () => {
-    expect(() => resolveConfig({ profiles: { x: { ...githubProfile, repo: '' } } }, { env: {} }))
+    expect(() => resolveConfig({
+      profiles: {
+        x: { ...githubProfile, repo: '' }
+      }
+    }, { env: {} }))
       .toThrow(/vault 仓库/)
   })
 
   it('缺省 branch/path 时补默认值', () => {
     const config = resolveConfig(
-      { profiles: { x: { type: 'github', apiBaseUrl: 'https://api.github.com', repo: 'a/b', token: 't' } } },
+      {
+        profiles: {
+          x: {
+            type: 'github',
+            apiBaseUrl: 'https://api.github.com',
+            repo: 'a/b',
+            token: 't'
+          }
+        }
+      },
       { env: {} }
     )
     expect(config).toMatchObject({ branch: 'main', path: 'stores' })

@@ -36,7 +36,14 @@ export interface EnvCommandContext {
 
 /** `.env` / `.env.local` / `.env.production` …（排除备份与模板） */
 const ENV_FILE_RE = /^\.env(?:\..+)?$/
-const ENV_FILE_EXCLUDE = ['.bak', '.example', '.sample', '.template', '.keys', '.enc']
+const ENV_FILE_EXCLUDE = [
+  '.bak',
+  '.example',
+  '.sample',
+  '.template',
+  '.keys',
+  '.enc'
+]
 
 export async function handleEnv(ctx: EnvCommandContext, args: string[]): Promise<void> {
   const [action = 'list', ...rest] = args
@@ -76,11 +83,16 @@ export function createClient(ctx: EnvCommandContext) {
     profile: ctx.options.string('profile') || undefined,
     token: ctx.options.string('token'),
     project: ctx.project,
-    config: ctx.project === undefined ? configFileOption(ctx.options) : undefined,
+    config: ctx.project === undefined
+      ? configFileOption(ctx.options)
+      : undefined,
     cwd: ctx.options.string('cwd')
   })
 
-  return { config, client: createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') }) }
+  return {
+    config,
+    client: createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
+  }
 }
 
 async function runList(ctx: EnvCommandContext): Promise<void> {
@@ -183,7 +195,11 @@ async function detectEnvFiles(): Promise<string[]> {
     .map(entry => entry.name)
     .filter(name => !ENV_FILE_EXCLUDE.some(suffix => name.endsWith(suffix)))
     .sort((a, b) => {
-      const rank = (name: string) => (name === '.env.local' ? 0 : name === '.env' ? 1 : 2)
+      const rank = (name: string) => (name === '.env.local'
+        ? 0
+        : name === '.env'
+          ? 1
+          : 2)
 
       return rank(a) - rank(b) || a.localeCompare(b)
     })
@@ -334,7 +350,9 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   if (updateFiles && inline)
     throw new Error('--update-files 与 --inline 不能同时使用')
 
-  const mode = updateFiles ? 'update-files' : inline ? 'inline' : 'error'
+  const mode = updateFiles
+    ? 'update-files'
+    : inline ? 'inline' : 'error'
   const { config, client } = createClient(ctx)
   const existing = await readStore(client, config.path, name)
   const store = existing?.store ?? createEmptyStore()
@@ -420,7 +438,11 @@ async function runPush(ctx: EnvCommandContext, args: string[]): Promise<void> {
   if (analysis.inline.length)
     logger.warn(colorText(`--inline：这些键已改成普通值，文件条目已清理：${analysis.inline.join('、')}`, 'yellow'))
 
-  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length ? ` · 删除 ${removed.length}` : ''}${analysis.fileUpdates.length ? ` · 文件 ${analysis.fileUpdates.length}` : ''}`, 'green'))
+  logger.success(colorText(`store "${name}" 已更新：新增 ${change.added.length} · 修改 ${change.updated.length}${removed.length
+    ? ` · 删除 ${removed.length}`
+    : ''}${analysis.fileUpdates.length
+    ? ` · 文件 ${analysis.fileUpdates.length}`
+    : ''}`, 'green'))
 }
 
 async function runRemove(ctx: EnvCommandContext, args: string[]): Promise<void> {
@@ -437,16 +459,22 @@ async function runRemove(ctx: EnvCommandContext, args: string[]): Promise<void> 
   const keepFiles = ctx.options.boolean('keep-files')
 
   if (ctx.options.boolean('dry-run')) {
-    logger.info(`${colorText('--dry-run，未删除', 'yellow')}：将删除 store "${colorText(name, 'blue')}"（${varsCount} 个变量${fileIds.length && !keepFiles ? ` · ${fileIds.length} 个文件` : ''}）`)
+    logger.info(`${colorText('--dry-run，未删除', 'yellow')}：将删除 store "${colorText(name, 'blue')}"（${varsCount} 个变量${fileIds.length && !keepFiles
+      ? ` · ${fileIds.length} 个文件`
+      : ''}）`)
     return
   }
 
   // 先删文件对象，再删 store JSON：中途失败只留下可被 check 发现的孤儿，而不是悬空引用。
-  const removedFiles = keepFiles ? 0 : await removeStoreFiles(client, config.path, name, fileIds)
+  const removedFiles = keepFiles
+    ? 0
+    : await removeStoreFiles(client, config.path, name, fileIds)
 
   await deleteStore(client, config.path, name, ref.version, `env: rm ${name}`)
 
-  logger.success(colorText(`store "${name}" 已删除（${varsCount} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}）`, 'green'))
+  logger.success(colorText(`store "${name}" 已删除（${varsCount} 个变量${removedFiles
+    ? ` · ${removedFiles} 个文件`
+    : ''}）`, 'green'))
 
   if (fileIds.length && keepFiles)
     logger.warn(colorText(`按 --keep-files 保留了 ${fileIds.length} 个文件对象`, 'yellow'))
@@ -463,7 +491,9 @@ async function removeStoreFiles(
 
   for (const id of ids) {
     const path = storeFilesPath(basePath, name, id)
-    const current = await client.readBytes(path, { maxBytes: maxFileBytes() })
+    const current = await client.readBytes(path, {
+      maxBytes: maxFileBytes()
+    })
 
     if (!current) {
       logger.warn(colorText(`文件 "${id}" 已经不存在，跳过`, 'yellow'))
@@ -533,7 +563,9 @@ async function runUnset(ctx: EnvCommandContext, args: string[]): Promise<void> {
     const removedFiles = await removeStoreFiles(client, config.path, name, orphanIds)
     await deleteStore(client, config.path, name, ref.version, `env: unset ${keys.join(', ')} in ${name}`)
 
-    logger.success(colorText(`store "${name}" 的变量已删光，store 一并删除（${keys.length - missing.length} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}）`, 'green'))
+    logger.success(colorText(`store "${name}" 的变量已删光，store 一并删除（${keys.length - missing.length} 个变量${removedFiles
+      ? ` · ${removedFiles} 个文件`
+      : ''}）`, 'green'))
     reportMissing()
     return
   }
@@ -542,7 +574,9 @@ async function runUnset(ctx: EnvCommandContext, args: string[]): Promise<void> {
 
   const removedFiles = await removeStoreFiles(client, config.path, name, orphanIds)
 
-  logger.success(colorText(`store "${name}" 已更新：删除 ${keys.length - missing.length} 个变量${removedFiles ? ` · ${removedFiles} 个文件` : ''}`, 'green'))
+  logger.success(colorText(`store "${name}" 已更新：删除 ${keys.length - missing.length} 个变量${removedFiles
+    ? ` · ${removedFiles} 个文件`
+    : ''}`, 'green'))
   for (const key of keys) {
     if (!missing.includes(key))
       logger.info(colorText(`  - ${key}`, 'red'))

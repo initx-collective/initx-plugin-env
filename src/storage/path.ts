@@ -32,6 +32,11 @@ export function normalizeApiBaseUrl(value: string): string {
 
 export function validateStorageRepo(type: StorageType, repo: string): void {
   assertSafePath(repo)
-  if (/\s/.test(repo) || (type === 'github' ? repo.split('/').length !== 2 : !/^\d+$/.test(repo) && repo.split('/').length < 2))
-    throw new Error(type === 'github' ? '仓库要写成 owner/repo 形式' : 'GitLab 仓库必须是数字项目 ID 或 group/subgroup/project')
+  if (/\s/.test(repo) || (type === 'github'
+    ? repo.split('/').length !== 2
+    : !/^\d+$/.test(repo) && repo.split('/').length < 2)) {
+    throw new Error(type === 'github'
+      ? '仓库要写成 owner/repo 形式'
+      : 'GitLab 仓库必须是数字项目 ID 或 group/subgroup/project')
+  }
 }

@@ -76,7 +76,9 @@ function buildProfile(input: {
   }
 
   const branch = input.branch.trim() || DEFAULT_BRANCH
-  const path = input.path.trim() === '' ? DEFAULT_PATH : input.path.trim()
+  const path = input.path.trim() === ''
+    ? DEFAULT_PATH
+    : input.path.trim()
 
   try {
     assertSafePath(path, true)
@@ -85,7 +87,14 @@ function buildProfile(input: {
     throw new Error(`store 目录不合法："${path}"`)
   }
 
-  return { type, apiBaseUrl, repo, branch, path, token: input.token || undefined }
+  return {
+    type,
+    apiBaseUrl,
+    repo,
+    branch,
+    path,
+    token: input.token || undefined
+  }
 }
 
 async function askProfile(base: EnvProfile | undefined): Promise<EnvProfile> {
@@ -138,7 +147,9 @@ async function runSetup(ctx: ProfileContext, args: string[]): Promise<void> {
   await requireTTY('setup')
 
   const profiles = profilesOf(ctx.store)
-  const explicitName = args[0] ? normalizeProfileName(args[0]) : undefined
+  const explicitName = args[0]
+    ? normalizeProfileName(args[0])
+    : undefined
   const base = explicitName ? profiles[explicitName] : undefined
 
   // 名字已存在时只问"是否覆盖"，不给第三个选项——避免交互分支过多。
@@ -182,7 +193,9 @@ async function runSetup(ctx: ProfileContext, args: string[]): Promise<void> {
 async function runEdit(ctx: ProfileContext, args: string[]): Promise<void> {
   await requireTTY('edit')
 
-  const name = args[0] ? normalizeProfileName(args[0]) : await pickProfile(ctx.store, '修改哪个 profile')
+  const name = args[0]
+    ? normalizeProfileName(args[0])
+    : await pickProfile(ctx.store, '修改哪个 profile')
   const current = requireProfile(ctx.store, name)
 
   logger.info(`profile ${colorText(name, 'blue')} 当前配置：`)
@@ -238,7 +251,9 @@ async function runUse(ctx: ProfileContext, args: string[]): Promise<void> {
   if (!names.length)
     throw new Error('本机还没有任何 profile\n  新建：ix env setup')
 
-  const name = args[0] ? normalizeProfileName(args[0]) : await pickProfile(ctx.store, '设为默认 profile')
+  const name = args[0]
+    ? normalizeProfileName(args[0])
+    : await pickProfile(ctx.store, '设为默认 profile')
 
   requireProfile(ctx.store, name)
   ctx.store.defaultProfile = name
@@ -263,8 +278,12 @@ async function runProfiles(ctx: ProfileContext): Promise<void> {
   const current = currentProfileName(ctx)
 
   for (const name of names) {
-    const mark = name === ctx.store.defaultProfile ? '*' : ' '
-    const currentMark = name === current ? colorText('  ← 当前项目', 'gray') : ''
+    const mark = name === ctx.store.defaultProfile
+      ? '*'
+      : ' '
+    const currentMark = name === current
+      ? colorText('  ← 当前项目', 'gray')
+      : ''
     logger.info(`${mark} ${colorText(name.padEnd(12), 'blue')}  ${describe(ctx.store.profiles![name]!)}${currentMark}`)
   }
 }
@@ -288,7 +307,9 @@ function currentProfileName(ctx: ProfileContext): string | undefined {
 }
 
 async function runRemoveProfile(ctx: ProfileContext, args: string[]): Promise<void> {
-  const name = args[0] ? normalizeProfileName(args[0]) : await pickProfile(ctx.store, '删除哪个 profile')
+  const name = args[0]
+    ? normalizeProfileName(args[0])
+    : await pickProfile(ctx.store, '删除哪个 profile')
 
   requireProfile(ctx.store, name)
 

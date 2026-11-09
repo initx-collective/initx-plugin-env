@@ -14,7 +14,9 @@ const hints: Record<StorageErrorCode, string> = {
 /** No response bodies, URLs, credentials or upstream exception messages. */
 export class StorageError extends Error {
   constructor(public readonly code: StorageErrorCode, public readonly status?: number) {
-    super(`${hints[code]}${status ? `（HTTP ${status}）` : ''}`)
+    super(`${hints[code]}${status
+      ? `（HTTP ${status}）`
+      : ''}`)
     this.name = 'StorageError'
   }
 }
@@ -34,5 +36,15 @@ export class StorageSizeError extends Error {
 export function httpError(response: Response): StorageError {
   const status = response.status
   const limited = status === 429 || (status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')))
-  return new StorageError(limited ? 'rate-limit' : status === 401 ? 'authentication' : status === 403 ? 'permission' : status === 404 ? 'not-found' : status >= 500 ? 'network' : 'validation', status)
+  return new StorageError(limited
+    ? 'rate-limit'
+    : status === 401
+      ? 'authentication'
+      : status === 403
+        ? 'permission'
+        : status === 404
+          ? 'not-found'
+          : status >= 500
+            ? 'network'
+            : 'validation', status)
 }

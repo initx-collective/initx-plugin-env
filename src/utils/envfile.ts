@@ -81,7 +81,9 @@ const PAIR_PATTERN = /^([^=]*)=(.*)$/
  */
 function readKey(text: string): string | null {
   const key = text.replace(/[ \t]+$/, '')
-  return key === '' || /^[ \t]/.test(key) ? null : key
+  return key === '' || /^[ \t]/.test(key)
+    ? null
+    : key
 }
 const COMMENT_PATTERN = /^[ \t]*#/
 
@@ -102,7 +104,13 @@ async function statOrNull(path: string): Promise<Stats | null> {
 
 function unescapeDouble(value: string): string {
   return value.replace(/\\([nrt"\\$`])/g, (_match: string, char: string) =>
-    char === 'n' ? '\n' : char === 'r' ? '\r' : char === 't' ? '\t' : char)
+    char === 'n'
+      ? '\n'
+      : char === 'r'
+        ? '\r'
+        : char === 't'
+          ? '\t'
+          : char)
 }
 
 /**
@@ -157,7 +165,9 @@ function readEntry(lines: string[], index: number): EnvPair | null {
   if (COMMENT_PATTERN.test(raw))
     return null
   const exportPrefix = EXPORT_PREFIX_PATTERN.test(raw)
-  const match = PAIR_PATTERN.exec(exportPrefix ? raw.replace(EXPORT_PREFIX_PATTERN, '') : raw)
+  const match = PAIR_PATTERN.exec(exportPrefix
+    ? raw.replace(EXPORT_PREFIX_PATTERN, '')
+    : raw)
   if (match === null)
     return null
   const key = readKey(match[1])
@@ -177,25 +187,41 @@ function readEntry(lines: string[], index: number): EnvPair | null {
       close = findClosingQuote(chunk)
     }
     quote = 'double'
-    value = unescapeDouble(close === -1 ? chunk : chunk.slice(0, close))
+    value = unescapeDouble(close === -1
+      ? chunk
+      : chunk.slice(0, close))
   }
   else if (body.startsWith('\'')) {
     // Rule 2: a single quoted value is verbatim - no unescaping, no comment cut
     // and no trimming - it simply ends at the first `'`.
     const close = body.indexOf('\'', 1)
     quote = 'single'
-    value = close === -1 ? body.slice(1) : body.slice(1, close)
+    value = close === -1
+      ? body.slice(1)
+      : body.slice(1, close)
   }
   else {
     value = parseUnquoted(body)
   }
-  return { key, value, exportPrefix, quote, raw, startLine: index, endLine }
+  return {
+    key,
+    value,
+    exportPrefix,
+    quote,
+    raw,
+    startLine: index,
+    endLine
+  }
 }
 
 export function parseEnv(content: string): EnvParseResult {
   // 文件头 BOM 只在整文件读取时剥离一次；否则第一个键名会变成 \uFEFFKEY。
-  const text = content.charCodeAt(0) === 0xFEFF ? content.slice(1) : content
-  const eol: '\n' | '\r\n' = text.includes('\r\n') ? '\r\n' : '\n'
+  const text = content.charCodeAt(0) === 0xFEFF
+    ? content.slice(1)
+    : content
+  const eol: '\n' | '\r\n' = text.includes('\r\n')
+    ? '\r\n'
+    : '\n'
   const trailingNewline = text.endsWith('\n')
   const lines = splitLines(text)
   const pairs = new Map<string, string>()
@@ -214,7 +240,14 @@ export function parseEnv(content: string): EnvParseResult {
     entries.push(entry)
     index = entry.endLine + 1
   }
-  return { lines, pairs, duplicates, eol, trailingNewline, entries }
+  return {
+    lines,
+    pairs,
+    duplicates,
+    eol,
+    trailingNewline,
+    entries
+  }
 }
 
 /**
@@ -278,7 +311,14 @@ export function mergeEnv(original: string, updates: Record<string, string>, opti
   // An empty file carries no EOL / trailing-newline hint, so render it fresh.
   if (original === '') {
     const content = renderEnvFile(updates, '\n', options)
-    return { content, added: Object.keys(updates), updated: [], unchanged: [], duplicates: [], changed: content !== original }
+    return {
+      content,
+      added: Object.keys(updates),
+      updated: [],
+      unchanged: [],
+      duplicates: [],
+      changed: content !== original
+    }
   }
   const parse = parseEnv(original)
   const { added, updated, unchanged, target } = planChanges(original, updates)
@@ -310,7 +350,14 @@ export function mergeEnv(original: string, updates: Record<string, string>, opti
       lines.push(renderKeyValue(key, updates[key], false, forceQuote?.has(key) ?? false))
   }
   const content = joinLines(lines, parse.eol, parse.trailingNewline)
-  return { content, added, updated, unchanged, duplicates: parse.duplicates, changed: content !== original }
+  return {
+    content,
+    added,
+    updated,
+    unchanged,
+    duplicates: parse.duplicates,
+    changed: content !== original
+  }
 }
 
 export function renderEnvFile(updates: Record<string, string>, eol: '\n' | '\r\n' = '\n', options: MergeOptions = {}): string {
@@ -323,7 +370,9 @@ export function renderEnvFile(updates: Record<string, string>, eol: '\n' | '\r\n
 
 export function diffEnv(original: string, updates: Record<string, string>): EnvDiff {
   const { added, updated, unchanged } = planChanges(original, updates)
-  const localOnly = [...parseEnv(original).pairs.keys()].filter(key => !(key in updates))
+  const localOnly = [
+    ...parseEnv(original).pairs.keys()
+  ].filter(key => !(key in updates))
   return { added, updated, unchanged, localOnly }
 }
 

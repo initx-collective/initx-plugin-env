@@ -35,7 +35,14 @@ export interface MigrationResult {
   removed: string[]
 }
 
-const LEGACY_FIELDS = ['repo', 'token', 'branch', 'path', 'storage', 'credentials'] as const
+const LEGACY_FIELDS = [
+  'repo',
+  'token',
+  'branch',
+  'path',
+  'storage',
+  'credentials'
+] as const
 
 /** credentials 的键形如 `<type>:<normalizedApiBaseUrl>`。 */
 function parseCredentialKey(key: string): { type: StorageType, apiBaseUrl: string } | undefined {
@@ -47,7 +54,10 @@ function parseCredentialKey(key: string): { type: StorageType, apiBaseUrl: strin
   if (type !== 'github' && type !== 'gitlab')
     return undefined
 
-  return { type, apiBaseUrl: key.slice(index + 1) }
+  return {
+    type,
+    apiBaseUrl: key.slice(index + 1)
+  }
 }
 
 function profileName(type: StorageType, apiBaseUrl: string, taken: Set<string>): string {
@@ -74,7 +84,9 @@ export function migrateLegacyStore(store: LegacyStoreShape): MigrationResult {
   if (!hasLegacy)
     return { changed: false, created: [], removed: [] }
 
-  const profiles: Record<string, EnvProfile> = { ...(store.profiles ?? {}) }
+  const profiles: Record<string, EnvProfile> = {
+    ...(store.profiles ?? {})
+  }
   const taken = new Set(Object.keys(profiles))
   const created: string[] = []
   const defaultBranch = 'main'

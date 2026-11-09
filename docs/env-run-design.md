@@ -105,7 +105,10 @@ fixture 收到的尾部参数必须与用户提供的数组一致，且没有触
 读取和校验成功后，构造新的子进程环境：
 
 ```ts
-const childEnv = { ...process.env, ...store.vars }
+const childEnv = {
+  ...process.env,
+  ...store.vars
+}
 ```
 
 这是语义示例，Windows 实现还需处理下面的大小写规则。

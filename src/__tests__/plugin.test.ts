@@ -18,7 +18,20 @@ describe('插件规则', () => {
 
     expect(rule).toBeDefined()
 
-    for (const action of ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'setup', 'apply', 'run', 'file', 'profile'])
+    for (const action of [
+      'list',
+      'ls',
+      'pull',
+      'set',
+      'unset',
+      'push',
+      'rm',
+      'setup',
+      'apply',
+      'run',
+      'file',
+      'profile'
+    ])
       expect(rule?.optional).toContain(action)
 
     // 裸 `npx initx env` 也要能进来打帮助
@@ -48,7 +61,9 @@ describe('createCliOptions', () => {
 
   it('取字符串值，数组用逗号拼起来', () => {
     expect(createCliOptions({ from: '.env.local' }).string('from')).toBe('.env.local')
-    expect(createCliOptions({ only: ['A', 'B'] }).string('only')).toBe('A,B')
+    expect(createCliOptions({
+      only: ['A', 'B']
+    }).string('only')).toBe('A,B')
     expect(createCliOptions({ from: '' }).string('from')).toBeUndefined()
     expect(createCliOptions({ token: 123 as unknown }).string('token')).toBe('123')
   })
@@ -115,7 +130,11 @@ describe('store 层', () => {
 
     const change = applyVars(store, { CHANGE: 'new', NEW: 'y', KEEP: 'x' })
 
-    expect(change).toEqual({ added: ['NEW'], updated: ['CHANGE'], unchanged: ['KEEP'] })
+    expect(change).toEqual({
+      added: ['NEW'],
+      updated: ['CHANGE'],
+      unchanged: ['KEEP']
+    })
     expect(store.vars).toEqual({ KEEP: 'x', CHANGE: 'new', NEW: 'y' })
   })
 })

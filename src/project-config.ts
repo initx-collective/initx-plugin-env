@@ -32,7 +32,10 @@ export class ProjectConfigError extends Error {
 
 function normalizeProjectConfig(data: EnvProjectConfig, file: string): ProjectConfig {
   try {
-    const storage = { ...data.storage, apiBaseUrl: normalizeApiBaseUrl(data.storage.apiBaseUrl || DEFAULT_API_URLS[data.storage.type]) }
+    const storage = {
+      ...data.storage,
+      apiBaseUrl: normalizeApiBaseUrl(data.storage.apiBaseUrl || DEFAULT_API_URLS[data.storage.type])
+    }
     validateStorageRepo(storage.type, storage.repo)
     if (storage.path !== undefined)
       assertSafePath(storage.path, true)

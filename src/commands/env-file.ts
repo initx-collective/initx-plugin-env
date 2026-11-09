@@ -144,7 +144,9 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
 
   if (dryRun) {
     logger.info(`${colorText('--dry-run', 'yellow')}：${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}`)
-    logger.info(`  路径 ${colorText(path, 'blue')} · ${bytes.byteLength} 字节 · sha256 ${digest.slice(0, 8)}${encoding === 'base64' ? ' · base64' : ''}`)
+    logger.info(`  路径 ${colorText(path, 'blue')} · ${bytes.byteLength} 字节 · sha256 ${digest.slice(0, 8)}${encoding === 'base64'
+      ? ' · base64'
+      : ''}`)
     return
   }
 
@@ -167,7 +169,14 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
   store.vars[key] = formatFileRef(id)
   store.files = {
     ...(store.files ?? {}),
-    [id]: { sha256: digest, bytes: bytes.byteLength, encoding, ...(mode ? { mode } : {}) }
+    [id]: {
+      sha256: digest,
+      bytes: bytes.byteLength,
+      encoding,
+      ...(mode
+        ? { mode }
+        : {})
+    }
   }
 
   if (previousId && previousId !== id)
@@ -185,7 +194,9 @@ async function runAdd(ctx: EnvCommandContext, args: string[]): Promise<void> {
   }
 
   logger.success(colorText(`store "${name}" 已更新：${key} → ${formatFileRef(id)}`, 'green'))
-  logger.info(`  ${colorText(path, 'blue')} · ${bytes.byteLength} 字节 · sha256 ${digest.slice(0, 8)}${encoding === 'base64' ? ' · base64' : ''}`)
+  logger.info(`  ${colorText(path, 'blue')} · ${bytes.byteLength} 字节 · sha256 ${digest.slice(0, 8)}${encoding === 'base64'
+    ? ' · base64'
+    : ''}`)
 }
 
 async function openStore(ctx: EnvCommandContext, rawName?: string) {
@@ -203,7 +214,9 @@ async function openStore(ctx: EnvCommandContext, rawName?: string) {
 }
 
 function describeEntry(entry: FileEntry): string {
-  return `${entry.bytes} B · ${entry.encoding}${entry.mode ? ` · ${entry.mode}` : ''} · sha256 ${entry.sha256.slice(0, 8)}`
+  return `${entry.bytes} B · ${entry.encoding}${entry.mode
+    ? ` · ${entry.mode}`
+    : ''} · sha256 ${entry.sha256.slice(0, 8)}`
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -226,7 +239,9 @@ async function runList(ctx: EnvCommandContext, args: string[]): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(refs.map(({ key, id }) => {
       const entry = ref.store.files?.[id]
-      return entry ? { key, id, ...entry } : { key, id, missing: true }
+      return entry
+        ? { key, id, ...entry }
+        : { key, id, missing: true }
     })))
     return
   }
@@ -238,7 +253,9 @@ async function runList(ctx: EnvCommandContext, args: string[]): Promise<void> {
     logger.info(`store "${colorText(name, 'blue')}" 共 ${refs.length} 个文件引用：`)
     for (const { key, id } of refs) {
       const entry = ref.store.files?.[id]
-      const detail = entry ? describeEntry(entry) : colorText('缺少元数据（用 file check 查看）', 'yellow')
+      const detail = entry
+        ? describeEntry(entry)
+        : colorText('缺少元数据（用 file check 查看）', 'yellow')
       logger.info(`  ${colorText(key, 'blue')} → ${colorText(formatFileRef(id), 'blue')}  ${detail}`)
     }
   }
@@ -270,7 +287,9 @@ async function runCat(ctx: EnvCommandContext, args: string[]): Promise<void> {
   }
 
   logger.warn(colorText('--show 会把注入值打到 stdout，注意日志采集', 'yellow'))
-  const resolved = await resolveStoreVars(client, config.path, name, ref.store, { keys: [key] })
+  const resolved = await resolveStoreVars(client, config.path, name, ref.store, {
+    keys: [key]
+  })
   // eslint-disable-next-line no-console
   console.log(resolved.vars[key])
 }
@@ -369,7 +388,9 @@ async function runRm(ctx: EnvCommandContext, args: string[]): Promise<void> {
     logger.info(`保留文件本体 ${colorText(path, 'blue')}（check 会报孤儿）`)
   }
   else {
-    const current = await client.readBytes(path, { maxBytes: maxFileBytes() })
+    const current = await client.readBytes(path, {
+      maxBytes: maxFileBytes()
+    })
 
     if (current) {
       await client.remove(path, { expectedVersion: current.version, message: `env: rm file ${id} in ${name}` })
@@ -418,14 +439,24 @@ async function runCheck(ctx: EnvCommandContext, args: string[]): Promise<void> {
       problems.push({ type: 'dangling-metadata', id })
 
     try {
-      const current = await client.readBytes(storeFilesPath(config.path, name, id), { maxBytes: maxFileBytes() })
+      const current = await client.readBytes(storeFilesPath(config.path, name, id), {
+        maxBytes: maxFileBytes()
+      })
 
-      if (!current)
+      if (!current) {
         problems.push({ type: 'missing-file', id })
-      else if (current.bytes.byteLength !== entry.bytes)
-        problems.push({ type: 'size-mismatch', id, expected: entry.bytes, actual: current.bytes.byteLength })
-      else if (sha256(current.bytes) !== entry.sha256)
+      }
+      else if (current.bytes.byteLength !== entry.bytes) {
+        problems.push({
+          type: 'size-mismatch',
+          id,
+          expected: entry.bytes,
+          actual: current.bytes.byteLength
+        })
+      }
+      else if (sha256(current.bytes) !== entry.sha256) {
         problems.push({ type: 'checksum-mismatch', id })
+      }
     }
     catch (error) {
       if (error instanceof StorageSizeError)

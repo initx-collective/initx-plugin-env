@@ -36,7 +36,14 @@ describe('文件引用语法', () => {
     expect(() => formatFileRef('Deploy_Key')).toThrow(FileRefError)
     expect(isValidFileId('a')).toBe(true)
     expect(isValidFileId('a.b_c-1')).toBe(true)
-    for (const id of ['', 'A', '-a', '.a', 'a/b', 'a'.repeat(65)])
+    for (const id of [
+      '',
+      'A',
+      '-a',
+      '.a',
+      'a/b',
+      'a'.repeat(65)
+    ])
       expect(isValidFileId(id), id).toBe(false)
   })
 
@@ -67,31 +74,59 @@ describe('文件对象路径', () => {
 
 describe('store 的 files 字段', () => {
   it('接受合法元数据并补默认 encoding', () => {
-    const store = parseStore(storeJson({ a: { sha256: sha, bytes: 12 } }), 'demo')
-    expect(store.files).toEqual({ a: { sha256: sha, bytes: 12, encoding: 'utf8' } })
+    const store = parseStore(storeJson({
+      a: { sha256: sha, bytes: 12 }
+    }), 'demo')
+    expect(store.files).toEqual({
+      a: { sha256: sha, bytes: 12, encoding: 'utf8' }
+    })
   })
 
   it('拒绝非法 id、sha、字节数和 mode', () => {
     for (const files of [
-      { Bad: { sha256: sha, bytes: 1 } },
-      { a: { sha256: 'abc', bytes: 1 } },
-      { a: { sha256: sha, bytes: -1 } },
-      { a: { sha256: sha, bytes: 1.5 } },
-      { a: { sha256: sha, bytes: 1, mode: '888' } },
-      { a: { sha256: sha, bytes: 1, encoding: 'hex' } },
-      { a: { sha256: sha, bytes: 1, extra: true } }
+      {
+        Bad: { sha256: sha, bytes: 1 }
+      },
+      {
+        a: { sha256: 'abc', bytes: 1 }
+      },
+      {
+        a: { sha256: sha, bytes: -1 }
+      },
+      {
+        a: { sha256: sha, bytes: 1.5 }
+      },
+      {
+        a: { sha256: sha, bytes: 1, mode: '888' }
+      },
+      {
+        a: { sha256: sha, bytes: 1, encoding: 'hex' }
+      },
+      {
+        a: { sha256: sha, bytes: 1, extra: true }
+      }
     ]) {
       expect(() => parseStore(storeJson(files), 'demo'), JSON.stringify(files)).toThrow(/files|结构不合法/)
     }
   })
 
   it('序列化往返保留 files', () => {
-    const store = parseStore(storeJson({ a: { sha256: sha, bytes: 3, encoding: 'base64', mode: '600' } }), 'demo')
+    const store = parseStore(storeJson({
+      a: {
+        sha256: sha,
+        bytes: 3,
+        encoding: 'base64',
+        mode: '600'
+      }
+    }), 'demo')
     expect(parseStore(serializeStore(store), 'demo')).toEqual(store)
   })
 
   it('没有 files 的旧 store 行为不变', () => {
-    const store = parseStore(JSON.stringify({ schema: 1, vars: { A: '1' } }), 'demo')
+    const store = parseStore(JSON.stringify({
+      schema: 1,
+      vars: { A: '1' }
+    }), 'demo')
     expect(store.files).toBeUndefined()
     expect(serializeStore(store)).toContain('"schema": 1')
   })
@@ -99,17 +134,26 @@ describe('store 的 files 字段', () => {
 
 describe('引用与声明的一致性', () => {
   it('收集引用并支持反向查询', () => {
-    const store = parseStore(storeJson({ a: { sha256: sha, bytes: 1 }, b: { sha256: sha, bytes: 1 } }, {
+    const store = parseStore(storeJson({
+      a: { sha256: sha, bytes: 1 },
+      b: { sha256: sha, bytes: 1 }
+    }, {
       A: '${file-a}',
       B: '${file-b}',
       C: 'plain'
     }), 'demo')
-    expect(collectVarFileRefs(store)).toEqual([{ key: 'A', id: 'a' }, { key: 'B', id: 'b' }])
+    expect(collectVarFileRefs(store)).toEqual([
+      { key: 'A', id: 'a' },
+      { key: 'B', id: 'b' }
+    ])
     expect(keysReferencing(store, 'a')).toEqual(['A'])
   })
 
   it('未声明的引用硬失败，且消息不含值以外的秘密', () => {
-    const store = parseStore(JSON.stringify({ schema: 1, vars: { DEPLOY_KEY: '${file-deploy-ke}' } }), 'demo')
+    const store = parseStore(JSON.stringify({
+      schema: 1,
+      vars: { DEPLOY_KEY: '${file-deploy-ke}' }
+    }), 'demo')
     const error = (() => {
       try {
         assertDeclaredRefs(store)
@@ -125,7 +169,9 @@ describe('引用与声明的一致性', () => {
   })
 
   it('声明过的引用与非引用值都放行', () => {
-    const store = parseStore(storeJson({ a: { sha256: sha, bytes: 1 } }, { A: '${file-a}', B: 'plain' }), 'demo')
+    const store = parseStore(storeJson({
+      a: { sha256: sha, bytes: 1 }
+    }, { A: '${file-a}', B: 'plain' }), 'demo')
     expect(() => assertDeclaredRefs(store)).not.toThrow()
   })
 })

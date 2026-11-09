@@ -98,7 +98,12 @@ describe('renderGithubEnvLines', () => {
 
     expect(delimiter).toMatch(/^EOF_[0-9a-f]{8}$/)
     expect(rest[rest.length - 1]).toBe(delimiter)
-    expect(output.split('\n')).toEqual([`MULTI<<${delimiter}`, 'line1', 'line2', delimiter])
+    expect(output.split('\n')).toEqual([
+      `MULTI<<${delimiter}`,
+      'line1',
+      'line2',
+      delimiter
+    ])
   })
 
   it('多行值里的 = 与空格原样保留', () => {
@@ -222,7 +227,11 @@ describe('injectEnv', () => {
 
     const result = injectEnv({ FOO: 'bar', SPACED: 'a b' }, { forceStdout: true })
 
-    expect(result).toEqual({ target: 'stdout', injected: ['FOO', 'SPACED'], masked: [] })
+    expect(result).toEqual({
+      target: 'stdout',
+      injected: ['FOO', 'SPACED'],
+      masked: []
+    })
     expect(loggedLines(log)).toEqual([`FOO=bar\nSPACED='a b'`])
   })
 

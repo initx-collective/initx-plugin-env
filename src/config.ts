@@ -88,7 +88,9 @@ export function requireProfile(store: EnvPluginStore, name: string): EnvProfile 
     const existing = profileNames(store)
     throw new ProfileError(
       `profile "${name}" 不存在\n${
-        existing.length ? `  现有：${existing.join('、')}\n` : '  本机还没有任何 profile\n'
+        existing.length
+          ? `  现有：${existing.join('、')}\n`
+          : '  本机还没有任何 profile\n'
       }  新建：ix env setup ${name}`
     )
   }
@@ -107,7 +109,9 @@ export function normalizeProfile(profile: EnvProfile): EnvProfile {
 }
 
 function describeTarget(type: StorageType, apiBaseUrl: string, repo: string): string {
-  return `${type} · ${apiBaseUrl}${repo ? ` · ${repo}` : ''}`
+  return `${type} · ${apiBaseUrl}${repo
+    ? ` · ${repo}`
+    : ''}`
 }
 
 function resolveByProject(
@@ -158,7 +162,9 @@ function resolveByProject(
     `有多个 profile 指向 ${project.storage.type} · ${project.storage.apiBaseUrl}，无法仅凭项目文件确定用哪个\n`
     + `  项目 repo：${project.storage.repo || '(未指定)'}\n`
     + `  候选：\n${result.candidates.map((entry) => {
-      const mark = entry.profile.repo === project.storage.repo ? ' ← repo 匹配' : ''
+      const mark = entry.profile.repo === project.storage.repo
+        ? ' ← repo 匹配'
+        : ''
       return `    ${entry.name}  repo: ${entry.profile.repo || '(空)'}${mark}`
     }).join('\n')}\n`
     + `  请显式指定：--profile <name>，或调整 initx-env.config.ts 的 repo`
@@ -226,7 +232,9 @@ export function resolveConfig(store: EnvPluginStore, overrides: EnvConfigOverrid
   const token = flagToken || envToken || profile.token || ''
   const tokenSource: TokenSource = flagToken
     ? 'flag'
-    : envToken ? 'INITX_ENV_TOKEN' : profile.token ? 'profile' : 'none'
+    : envToken
+      ? 'INITX_ENV_TOKEN'
+      : profile.token ? 'profile' : 'none'
 
   if (!token) {
     throw new ProfileError(

@@ -51,7 +51,9 @@ export class StoreReadError extends Error {
 export function storeFilePath(basePath: string, name: string): string {
   const normalized = normalizeStoreName(name)
   const base = (basePath || '').trim().replace(/^\/+|\/+$/g, '')
-  const path = base ? `${base}/${normalized}/${STORE_FILE_NAME}` : `${normalized}/${STORE_FILE_NAME}`
+  const path = base
+    ? `${base}/${normalized}/${STORE_FILE_NAME}`
+    : `${normalized}/${STORE_FILE_NAME}`
 
   assertSafePath(path)
 
@@ -75,9 +77,13 @@ export function parseStore(content: string, name: string): StoreFile {
       const [field, child] = issue.path
       if (field === 'targets' && (child === 'envFiles' || child === 'secrets'))
         return `targets.${child}`
-      return field === 'schema' || field === 'vars' || field === 'files' || field === 'targets' ? field : 'root'
+      return field === 'schema' || field === 'vars' || field === 'files' || field === 'targets'
+        ? field
+        : 'root'
     })
-    throw new StoreReadError('invalid-shape', [...new Set(fields)], `store "${name}" 结构不合法：${result.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`)
+    throw new StoreReadError('invalid-shape', [
+      ...new Set(fields)
+    ], `store "${name}" 结构不合法：${result.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`)
   }
 
   const invalidId = Object.keys(result.data.files ?? {}).find(id => !isValidFileId(id))
@@ -135,7 +141,12 @@ export async function writeStore(
 ): Promise<void> {
   requireCapability(client, 'write')
   requireCapability(client, 'conditionalWrite')
-  await client.write(storeFilePath(basePath, name), serializeStore(store), { message, condition: version === undefined ? { kind: 'create' } : { kind: 'update', expectedVersion: version } })
+  await client.write(storeFilePath(basePath, name), serializeStore(store), {
+    message,
+    condition: version === undefined
+      ? { kind: 'create' }
+      : { kind: 'update', expectedVersion: version }
+  })
 }
 
 export async function deleteStore(
@@ -177,5 +188,8 @@ export function applyVars(store: StoreFile, updates: Record<string, string>): St
 }
 
 export function createStoreWithVars(vars: Record<string, string>): StoreFile {
-  return { ...createEmptyStore(), vars: { ...vars } }
+  return {
+    ...createEmptyStore(),
+    vars: { ...vars }
+  }
 }

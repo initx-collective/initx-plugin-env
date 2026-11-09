@@ -9,8 +9,19 @@ import { handleEnv } from '../commands/env'
 import { parseStore } from '../store'
 import { createHarness } from './run-harness'
 
-const { logger } = vi.hoisted(() => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn() } }))
-vi.mock('@initx-plugin/utils', async importOriginal => ({ ...await importOriginal<typeof import('@initx-plugin/utils')>(), logger, inquirer: {} }))
+const { logger } = vi.hoisted(() => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn()
+  }
+}))
+vi.mock('@initx-plugin/utils', async importOriginal => ({
+  ...await importOriginal<typeof import('@initx-plugin/utils')>(),
+  logger,
+  inquirer: {}
+}))
 
 const keyBytes = new TextEncoder().encode('-----BEGIN KEY-----\nABC\n-----END KEY-----\n')
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
@@ -26,7 +37,10 @@ interface Remote {
 function stub(remote: Remote = {}) {
   requests = []
   vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => {
-    requests.push({ url: String(url), init })
+    requests.push({
+      url: String(url),
+      init
+    })
     const target = String(url)
     if (init.method === 'PUT')
       return new Response(null, { status: 200 })
@@ -34,12 +48,23 @@ function stub(remote: Remote = {}) {
       return Response.json({ id: 'head' })
     if (target.includes('/contents/test-stores/demo/_files/')) {
       return remote.file
-        ? Response.json({ type: 'file', sha: 'file-version', encoding: 'base64', content: Buffer.from(remote.file).toString('base64'), size: remote.file.byteLength })
+        ? Response.json({
+            type: 'file',
+            sha: 'file-version',
+            encoding: 'base64',
+            content: Buffer.from(remote.file).toString('base64'),
+            size: remote.file.byteLength
+          })
         : new Response('', { status: 404 })
     }
     if (target.includes('/contents/test-stores/demo/env.json') || target.includes('/contents/test-stores/demo.json')) {
       return remote.store
-        ? Response.json({ type: 'file', sha: 'store-version', encoding: 'base64', content: Buffer.from(JSON.stringify(remote.store)).toString('base64') })
+        ? Response.json({
+            type: 'file',
+            sha: 'store-version',
+            encoding: 'base64',
+            content: Buffer.from(JSON.stringify(remote.store)).toString('base64')
+          })
         : new Response('', { status: 404 })
     }
     return new Response('', { status: 404 })
@@ -85,23 +110,56 @@ afterEach(async () => {
 
 describe('push 与文件引用', () => {
   it('本地内容与文件一致时保留引用且零写入', async () => {
-    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: storeWith({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const path = await envFile('A="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\n')
-    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path }) }, ['push', 'demo'])
+    await handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path })
+    }, ['push', 'demo'])
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('内容变化时默认报错，要求显式选择', async () => {
-    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: storeWith({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const path = await envFile('A=changed\n')
-    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path }) }, ['push', 'demo'])).rejects.toThrow(/--update-files/)
+    await expect(handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path })
+    }, ['push', 'demo'])).rejects.toThrow(/--update-files/)
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('--update-files 先传文件再更新元数据，引用保持不变', async () => {
-    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: storeWith({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const path = await envFile('A=changed\n')
-    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])
+    await handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path, updateFiles: true })
+    }, ['push', 'demo'])
 
     const writes = requests.filter(request => request.init?.method === 'PUT')
     expect(writes).toHaveLength(2)
@@ -109,13 +167,27 @@ describe('push 与文件引用', () => {
 
     const store = savedStore()
     expect(store.vars.A).toBe('${file-key}')
-    expect(store.files!.key).toMatchObject({ sha256: sha(new TextEncoder().encode('changed')), bytes: 7 })
+    expect(store.files!.key).toMatchObject({
+      sha256: sha(new TextEncoder().encode('changed')),
+      bytes: 7
+    })
   })
 
   it('--inline 改成普通值并清理文件条目', async () => {
-    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: storeWith({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const path = await envFile('A=changed\n')
-    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, inline: true }) }, ['push', 'demo'])
+    await handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path, inline: true })
+    }, ['push', 'demo'])
 
     expect(requests.filter(request => request.init?.method === 'PUT')).toHaveLength(1)
     const store = savedStore()
@@ -124,8 +196,19 @@ describe('push 与文件引用', () => {
   })
 
   it('set 作用在引用键上等价于 --inline', async () => {
-    stub({ store: storeWith({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
-    await handleEnv({ store: harness.testStore(), options: createCliOptions() }, ['set', 'demo', 'A=changed'])
+    stub({
+      store: storeWith({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
+    await handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions()
+    }, ['set', 'demo', 'A=changed'])
     const store = savedStore()
     expect(store.vars.A).toBe('changed')
     expect(store.files).toBeUndefined()
@@ -135,19 +218,38 @@ describe('push 与文件引用', () => {
     stub({
       store: storeWith(
         { A: '${file-key}', B: '${file-key}' },
-        { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }
+        {
+          key: {
+            sha256: sha(keyBytes),
+            bytes: keyBytes.byteLength
+          }
+        }
       ),
       file: keyBytes
     })
     const path = await envFile('A="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\nB=changed\n')
-    await expect(handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, updateFiles: true }) }, ['push', 'demo'])).rejects.toThrow(/本地内容不一致/)
+    await expect(handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path, updateFiles: true })
+    }, ['push', 'demo'])).rejects.toThrow(/本地内容不一致/)
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
   it('--prune 删除本地没有的引用键并清理文件条目', async () => {
-    stub({ store: storeWith({ A: '${file-key}', B: 'plain' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: storeWith({ A: '${file-key}', B: 'plain' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const path = await envFile('C=1\n')
-    await handleEnv({ store: harness.testStore(), options: createCliOptions({ from: path, prune: true }) }, ['push', 'demo'])
+    await handleEnv({
+      store: harness.testStore(),
+      options: createCliOptions({ from: path, prune: true })
+    }, ['push', 'demo'])
 
     const store = savedStore()
     expect(store.vars).toEqual({ C: '1' })

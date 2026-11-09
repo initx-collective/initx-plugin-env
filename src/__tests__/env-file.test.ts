@@ -9,10 +9,26 @@ import { createCliOptions } from '../cli-options'
 import { handleEnvFile } from '../commands/env-file'
 import { parseStore } from '../store'
 
-const { logger } = vi.hoisted(() => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn() } }))
-vi.mock('@initx-plugin/utils', async importOriginal => ({ ...await importOriginal<typeof import('@initx-plugin/utils')>(), logger, inquirer: {} }))
+const { logger } = vi.hoisted(() => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn()
+  }
+}))
+vi.mock('@initx-plugin/utils', async importOriginal => ({
+  ...await importOriginal<typeof import('@initx-plugin/utils')>(),
+  logger,
+  inquirer: {}
+}))
 
-const storeConfig = { repo: 'fake/vault', token: 'token', branch: 'main', path: 'test-stores' }
+const storeConfig = {
+  repo: 'fake/vault',
+  token: 'token',
+  branch: 'main',
+  path: 'test-stores'
+}
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 
 let directory: string
@@ -28,7 +44,10 @@ interface Remote {
 function stub(remote: Remote = {}) {
   requests = []
   vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => {
-    requests.push({ url: String(url), init })
+    requests.push({
+      url: String(url),
+      init
+    })
     const target = String(url)
     if (init.method === 'PUT' || init.method === 'DELETE')
       return new Response(null, { status: 200 })
@@ -38,12 +57,23 @@ function stub(remote: Remote = {}) {
       return Response.json((remote.list ?? []).map(item => ({ ...item, path: `test-stores/demo/_files/${item.name}` })))
     if (target.includes('/contents/test-stores/demo/_files/')) {
       return remote.file
-        ? Response.json({ type: 'file', sha: 'file-version', encoding: 'base64', content: Buffer.from(remote.file).toString('base64'), size: remote.file.byteLength })
+        ? Response.json({
+            type: 'file',
+            sha: 'file-version',
+            encoding: 'base64',
+            content: Buffer.from(remote.file).toString('base64'),
+            size: remote.file.byteLength
+          })
         : new Response('', { status: 404 })
     }
     if (target.includes('/contents/test-stores/demo/env.json')) {
       return remote.store
-        ? Response.json({ type: 'file', sha: 'store-version', encoding: 'base64', content: Buffer.from(JSON.stringify(remote.store)).toString('base64') })
+        ? Response.json({
+            type: 'file',
+            sha: 'store-version',
+            encoding: 'base64',
+            content: Buffer.from(JSON.stringify(remote.store)).toString('base64')
+          })
         : new Response('', { status: 404 })
     }
     return new Response('', { status: 404 })
@@ -74,7 +104,10 @@ describe('env file add', () => {
   it('先写文件再写 store，变量变成引用', async () => {
     stub()
     const file = await sourceFile(keyBytes)
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'deploy-key' }) }, ['add', 'demo', 'DEPLOY_KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file, as: 'deploy-key' })
+    }, ['add', 'demo', 'DEPLOY_KEY'])
 
     const writes = requests.filter(request => request.init?.method === 'PUT')
     expect(writes).toHaveLength(2)
@@ -95,11 +128,20 @@ describe('env file add', () => {
     const store = parseStore(JSON.stringify({
       schema: 1,
       vars: { DEPLOY_KEY: '${file-deploy-key}' },
-      files: { 'deploy-key': { sha256: sha(keyBytes), bytes: keyBytes.byteLength, encoding: 'utf8' } }
+      files: {
+        'deploy-key': {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength,
+          encoding: 'utf8'
+        }
+      }
     }), 'demo')
     stub({ store, file: keyBytes })
     const file = await sourceFile(keyBytes)
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'deploy-key' }) }, ['add', 'demo', 'DEPLOY_KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file, as: 'deploy-key' })
+    }, ['add', 'demo', 'DEPLOY_KEY'])
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
   })
 
@@ -109,18 +151,29 @@ describe('env file add', () => {
     const store = parseStore(JSON.stringify({
       schema: 1,
       vars: { KEY: '${file-key}' },
-      files: { key: { sha256: sha(oldBytes), bytes: oldBytes.byteLength } }
+      files: {
+        key: {
+          sha256: sha(oldBytes),
+          bytes: oldBytes.byteLength
+        }
+      }
     }), 'demo')
     stub({ store, file: oldBytes })
     const file = await sourceFile(newBytes)
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'key' }) }, ['add', 'demo', 'KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file, as: 'key' })
+    }, ['add', 'demo', 'KEY'])
 
     const writes = requests.filter(request => request.init?.method === 'PUT')
     expect(writes).toHaveLength(2)
     expect(writes[0]!.url).toContain('/demo/_files/key')
 
     const saved = JSON.parse(Buffer.from(JSON.parse(String(writes[1]!.init!.body)).content, 'base64').toString())
-    expect(saved.files.key).toMatchObject({ sha256: sha(newBytes), bytes: newBytes.byteLength })
+    expect(saved.files.key).toMatchObject({
+      sha256: sha(newBytes),
+      bytes: newBytes.byteLength
+    })
     expect(logger.info.mock.calls.flat().join('\n')).toMatch(/\d+ B → [0-9a-f]{8}\/\d+ B/)
   })
 
@@ -128,17 +181,29 @@ describe('env file add', () => {
     const store = parseStore(JSON.stringify({
       schema: 1,
       vars: { OTHER: '${file-deploy-key}' },
-      files: { 'deploy-key': { sha256: sha(keyBytes), bytes: keyBytes.byteLength, encoding: 'utf8' } }
+      files: {
+        'deploy-key': {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength,
+          encoding: 'utf8'
+        }
+      }
     }), 'demo')
     stub({ store, file: keyBytes })
     const file = await sourceFile(keyBytes)
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'deploy-key' }) }, ['add', 'demo', 'DEPLOY_KEY'])).rejects.toThrow(/已被 OTHER 引用/)
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file, as: 'deploy-key' })
+    }, ['add', 'demo', 'DEPLOY_KEY'])).rejects.toThrow(/已被 OTHER 引用/)
   })
 
   it('--dry-run 不上传也不写 store', async () => {
     stub()
     const file = await sourceFile(keyBytes)
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ file, as: 'deploy-key', dryRun: true }) }, ['add', 'demo', 'DEPLOY_KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file, as: 'deploy-key', dryRun: true })
+    }, ['add', 'demo', 'DEPLOY_KEY'])
     expect(requests.filter(request => request.init?.method === 'PUT')).toEqual([])
     expect(logger.info.mock.calls.flat().join('\n')).toContain('--dry-run')
   })
@@ -146,7 +211,10 @@ describe('env file add', () => {
   it('utf8 模式下拒绝非 UTF-8 文件', async () => {
     stub()
     const file = await sourceFile(new Uint8Array([0xFF, 0xFE]))
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ file }) }, ['add', 'demo', 'BIN'])).rejects.toThrow(/UTF-8/)
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file })
+    }, ['add', 'demo', 'BIN'])).rejects.toThrow(/UTF-8/)
     expect(requests).toEqual([])
   })
 
@@ -154,7 +222,10 @@ describe('env file add', () => {
     stub()
     process.env.INITX_ENV_MAX_FILE_BYTES = '2'
     const file = await sourceFile(new TextEncoder().encode('abc'))
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ file }) }, ['add', 'demo', 'BIG'])).rejects.toThrow(/2 字节上限/)
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ file })
+    }, ['add', 'demo', 'BIG'])).rejects.toThrow(/2 字节上限/)
     expect(requests).toEqual([])
   })
 })
@@ -165,60 +236,130 @@ function fileStore(vars: Record<string, string>, files: Record<string, { sha256:
 
 describe('env file ls cat pull rm check', () => {
   it('ls 支持 --json 输出引用与元数据', async () => {
-    stub({ store: fileStore({ KEY: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: fileStore({ KEY: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ json: true }) }, ['ls', 'demo'])
-    expect(JSON.parse(String(output.mock.calls[0]![0]))).toEqual([{
-      key: 'KEY',
-      id: 'key',
-      sha256: sha(keyBytes),
-      bytes: keyBytes.byteLength,
-      encoding: 'utf8'
-    }])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ json: true })
+    }, ['ls', 'demo'])
+    expect(JSON.parse(String(output.mock.calls[0]![0]))).toEqual([
+      {
+        key: 'KEY',
+        id: 'key',
+        sha256: sha(keyBytes),
+        bytes: keyBytes.byteLength,
+        encoding: 'utf8'
+      }
+    ])
   })
 
   it('ls --json 在没有引用时输出空数组而不是日志', async () => {
-    stub({ store: fileStore({}, {}) })
+    stub({
+      store: fileStore({}, {})
+    })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ json: true }) }, ['ls', 'demo'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ json: true })
+    }, ['ls', 'demo'])
     expect(JSON.parse(String(output.mock.calls[0]![0]))).toEqual([])
     expect(logger.info).not.toHaveBeenCalled()
   })
 
   it('cat 默认只报元数据，--show 才输出注入值', async () => {
-    stub({ store: fileStore({ KEY: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }), file: keyBytes })
+    stub({
+      store: fileStore({ KEY: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
+      file: keyBytes
+    })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['cat', 'demo', 'KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions()
+    }, ['cat', 'demo', 'KEY'])
     expect(output).not.toHaveBeenCalled()
 
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ show: true }) }, ['cat', 'demo', 'KEY'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ show: true })
+    }, ['cat', 'demo', 'KEY'])
     expect(output).toHaveBeenCalledWith('-----BEGIN KEY-----\nABC\n-----END KEY-----\n')
   })
 
   it('cat --show 对 base64 输出注入值而不是原始字节', async () => {
     const bytes = new Uint8Array([0, 1, 2, 255])
-    stub({ store: fileStore({ BIN: '${file-bin}' }, { bin: { sha256: sha(bytes), bytes: bytes.byteLength, encoding: 'base64' } }), file: bytes })
+    stub({
+      store: fileStore({ BIN: '${file-bin}' }, {
+        bin: {
+          sha256: sha(bytes),
+          bytes: bytes.byteLength,
+          encoding: 'base64'
+        }
+      }),
+      file: bytes
+    })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ show: true }) }, ['cat', 'demo', 'BIN'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ show: true })
+    }, ['cat', 'demo', 'BIN'])
     expect(output).toHaveBeenCalledWith(Buffer.from(bytes).toString('base64'))
   })
 
   it('pull 落盘原始字节，默认不覆盖', async () => {
-    stub({ store: fileStore({ KEY: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength, mode: '600' } }), file: keyBytes })
+    stub({
+      store: fileStore({ KEY: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength,
+          mode: '600'
+        }
+      }),
+      file: keyBytes
+    })
     const out = join(directory, 'secrets')
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ 'to-dir': out }) }, ['pull', 'demo'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ 'to-dir': out })
+    }, ['pull', 'demo'])
     expect(await readFile(join(out, 'key'), 'utf8')).toBe('-----BEGIN KEY-----\nABC\n-----END KEY-----\n')
 
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ 'to-dir': out }) }, ['pull', 'demo'])).rejects.toThrow(/已存在/)
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ toDir: out, force: true }) }, ['pull', 'demo'])).resolves.toBeUndefined()
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ 'to-dir': out })
+    }, ['pull', 'demo'])).rejects.toThrow(/已存在/)
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ toDir: out, force: true })
+    }, ['pull', 'demo'])).resolves.toBeUndefined()
   })
 
   it('rm 删除最后一个引用时才删文件，共用 id 时保留', async () => {
     stub({
-      store: fileStore({ A: '${file-key}', B: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }),
+      store: fileStore({ A: '${file-key}', B: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
       file: keyBytes
     })
-    await handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['rm', 'demo', 'A'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions()
+    }, ['rm', 'demo', 'A'])
     expect(requests.some(request => request.init?.method === 'DELETE')).toBe(false)
     const sharedWrite = requests.find(request => request.init?.method === 'PUT')!
     const shared = JSON.parse(Buffer.from(JSON.parse(String(sharedWrite.init!.body)).content, 'base64').toString())
@@ -226,10 +367,18 @@ describe('env file ls cat pull rm check', () => {
     expect(shared.files.key).toBeDefined()
 
     stub({
-      store: fileStore({ A: '${file-key}' }, { key: { sha256: sha(keyBytes), bytes: keyBytes.byteLength } }),
+      store: fileStore({ A: '${file-key}' }, {
+        key: {
+          sha256: sha(keyBytes),
+          bytes: keyBytes.byteLength
+        }
+      }),
       file: keyBytes
     })
-    await handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['rm', 'demo', 'A'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions()
+    }, ['rm', 'demo', 'A'])
     expect(requests.some(request => request.init?.method === 'DELETE')).toBe(true)
     const lastWrite = requests.find(request => request.init?.method === 'PUT')!
     const last = JSON.parse(Buffer.from(JSON.parse(String(lastWrite.init!.body)).content, 'base64').toString())
@@ -238,16 +387,34 @@ describe('env file ls cat pull rm check', () => {
   })
 
   it('ls 与 pull 对未声明引用给出受控结果', async () => {
-    stub({ store: parseStore(JSON.stringify({ schema: 1, vars: { A: '${file-a}' } }), 'demo') })
-    await handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['ls', 'demo'])
+    stub({
+      store: parseStore(JSON.stringify({
+        schema: 1,
+        vars: { A: '${file-a}' }
+      }), 'demo')
+    })
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions()
+    }, ['ls', 'demo'])
     expect(logger.info.mock.calls.flat().join('\n')).toContain('缺少元数据')
 
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions({ toDir: join(directory, 'out') }) }, ['pull', 'demo'])).rejects.toThrow(/未声明的文件/)
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({
+        toDir: join(directory, 'out')
+      })
+    }, ['pull', 'demo'])).rejects.toThrow(/未声明的文件/)
   })
 
   it('rm 对普通值报错', async () => {
-    stub({ store: fileStore({ A: 'plain' }, {}) })
-    await expect(handleEnvFile({ store: storeConfig, options: createCliOptions() }, ['rm', 'demo', 'A'])).rejects.toThrow(/不是文件引用/)
+    stub({
+      store: fileStore({ A: 'plain' }, {})
+    })
+    await expect(handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions()
+    }, ['rm', 'demo', 'A'])).rejects.toThrow(/不是文件引用/)
   })
 
   it('check 报出四个方向的问题并以非零码退出', async () => {
@@ -255,15 +422,26 @@ describe('env file ls cat pull rm check', () => {
       store: fileStore(
         { A: '${file-key}', D: '${file-missing}' },
         {
-          'key': { sha256: sha(keyBytes), bytes: keyBytes.byteLength },
-          'orphan-meta': { sha256: sha(new Uint8Array()), bytes: 0 }
+          'key': {
+            sha256: sha(keyBytes),
+            bytes: keyBytes.byteLength
+          },
+          'orphan-meta': {
+            sha256: sha(new Uint8Array()),
+            bytes: 0
+          }
         }
       ),
       file: new TextEncoder().encode('different'),
-      list: [{ name: 'stray', type: 'file' }]
+      list: [
+        { name: 'stray', type: 'file' }
+      ]
     })
     const output = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await handleEnvFile({ store: storeConfig, options: createCliOptions({ json: true }) }, ['check', 'demo'])
+    await handleEnvFile({
+      store: storeConfig,
+      options: createCliOptions({ json: true })
+    }, ['check', 'demo'])
     const report = JSON.parse(String(output.mock.calls[0]![0]))
     expect(output).toHaveBeenCalledTimes(1)
     const types = report.problems.map((problem: { type: string }) => problem.type)

@@ -57,7 +57,13 @@ export function localBytes(value: string, encoding: FileEncoding): Uint8Array | 
  * - 引用键且内容不同 → 冲突，交给 `--update-files` / `--inline` 决定。
  */
 export function analyzePush(store: StoreFile, local: Record<string, string>, mode: PushMode): PushAnalysis {
-  const analysis: PushAnalysis = { updates: {}, unchanged: [], conflicts: [], inline: [], fileUpdates: [] }
+  const analysis: PushAnalysis = {
+    updates: {},
+    unchanged: [],
+    conflicts: [],
+    inline: [],
+    fileUpdates: []
+  }
   const queued = new Map<string, Uint8Array>()
   // 共用同一个 id 的键，本地内容必须一致；否则 --update-files 会让另一边变成旧值。
   const seenLocal = new Map<string, Uint8Array>()

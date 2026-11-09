@@ -22,7 +22,14 @@ export function runProcess(command: string, args: string[], env: NodeJS.ProcessE
 
     const failure = (error: unknown): RunResult => {
       const errorCode = (error as NodeJS.ErrnoException).code
-      return { code: errorCode === 'ENOENT' ? 127 : errorCode === 'EACCES' ? 126 : 1, errorCode: errorCode ?? 'UNKNOWN' }
+      return {
+        code: errorCode === 'ENOENT'
+          ? 127
+          : errorCode === 'EACCES'
+            ? 126
+            : 1,
+        errorCode: errorCode ?? 'UNKNOWN'
+      }
     }
 
     const finish = (result: RunResult) => {
@@ -55,7 +62,10 @@ export function runProcess(command: string, args: string[], env: NodeJS.ProcessE
         finally {
           // Bound the wait even when the OS can no longer terminate the child.
           child.unref()
-          finish({ code: signalExitCode(signal), signal })
+          finish({
+            code: signalExitCode(signal),
+            signal
+          })
         }
       }, 5000)
     }
@@ -79,7 +89,12 @@ export function runProcess(command: string, args: string[], env: NodeJS.ProcessE
     child.once('error', error => finish(failure(error)))
     child.once('close', (code, signal) => {
       const endedBy = forwarded ?? signal ?? undefined
-      finish(endedBy ? { code: signalExitCode(endedBy), signal: endedBy } : { code: code ?? 1 })
+      finish(endedBy
+        ? {
+            code: signalExitCode(endedBy),
+            signal: endedBy
+          }
+        : { code: code ?? 1 })
     })
   })
 }

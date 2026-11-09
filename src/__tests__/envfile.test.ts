@@ -36,7 +36,13 @@ describe('parseEnv', () => {
   it('parses basic key/value pairs, blank lines and comments (rules 4, 5)', () => {
     const result = parseEnv('# a comment\n\nKEY=value\nEMPTY=\nSPACED = 1\n')
 
-    expect(result.lines).toEqual(['# a comment', '', 'KEY=value', 'EMPTY=', 'SPACED = 1'])
+    expect(result.lines).toEqual([
+      '# a comment',
+      '',
+      'KEY=value',
+      'EMPTY=',
+      'SPACED = 1'
+    ])
     expect(result.pairs.get('KEY')).toBe('value')
     expect(result.pairs.get('EMPTY')).toBe('')
     expect(result.pairs.get('SPACED')).toBe('1')
@@ -110,7 +116,9 @@ describe('parseEnv', () => {
     const result = parseEnv('FOO BAR\nnot a pair\nKEY=1\n')
 
     expect(result.lines).toEqual(['FOO BAR', 'not a pair', 'KEY=1'])
-    expect([...result.pairs.keys()]).toEqual(['KEY'])
+    expect([
+      ...result.pairs.keys()
+    ]).toEqual(['KEY'])
     expect(result.entries).toHaveLength(1)
   })
 
@@ -294,10 +302,14 @@ describe('shell 展开字符与强制引号', () => {
   })
 
   it('forceQuote 让安全值也用双引号，多行 PEM 原样往返', () => {
-    expect(mergeEnv('', { A: 'plain' }, { forceQuote: new Set(['A']) }).content).toBe('A="plain"\n')
+    expect(mergeEnv('', { A: 'plain' }, {
+      forceQuote: new Set(['A'])
+    }).content).toBe('A="plain"\n')
 
     const pem = '-----BEGIN KEY-----\nABCD\n-----END KEY-----\n'
-    const content = mergeEnv('', { KEY: pem }, { forceQuote: new Set(['KEY']) }).content
+    const content = mergeEnv('', { KEY: pem }, {
+      forceQuote: new Set(['KEY'])
+    }).content
 
     expect(content).toContain('\\n-----END KEY-----\\n')
     expect(parseEnv(content).pairs.get('KEY')).toBe(pem)
@@ -325,7 +337,12 @@ describe('diffEnv', () => {
   })
 
   it('reports every key of an empty file as added', () => {
-    expect(diffEnv('', { A: '1' })).toEqual({ added: ['A'], updated: [], unchanged: [], localOnly: [] })
+    expect(diffEnv('', { A: '1' })).toEqual({
+      added: ['A'],
+      updated: [],
+      unchanged: [],
+      localOnly: []
+    })
   })
 })
 

@@ -25,7 +25,11 @@ export function parseRunArgs(args: string[], tail: unknown): { name: string, com
     throw new Error(USAGE)
   if (tail.some(arg => arg.includes('\0')))
     throw new Error('命令或参数不能包含 NUL')
-  return { name, command: tail[0], args: tail.slice(1) }
+  return {
+    name,
+    command: tail[0],
+    args: tail.slice(1)
+  }
 }
 
 export function createRunEnv(
@@ -40,7 +44,9 @@ export function createRunEnv(
       throw new Error(`变量名 ${JSON.stringify(name)} 不合法：只允许字母、数字、下划线，不能以数字开头`)
     if (typeof value !== 'string' || value.includes('\0'))
       throw new Error(`变量 ${JSON.stringify(name)} 必须是字符串且不能包含 NUL`)
-    const normalized = platform === 'win32' ? name.toUpperCase() : name
+    const normalized = platform === 'win32'
+      ? name.toUpperCase()
+      : name
     if (names.has(normalized))
       throw new Error(`变量 ${JSON.stringify(name)} 在 Windows 上存在大小写冲突`)
     names.add(normalized)
@@ -56,7 +62,10 @@ export function createRunEnv(
         inherited.add(normalized)
     }
   }
-  return { ...env, ...vars }
+  return {
+    ...env,
+    ...vars
+  }
 }
 
 /**
@@ -96,7 +105,9 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
     config = resolveConfig(ctx.store, {
       token: ctx.options.string('token'),
       project: ctx.project,
-      config: ctx.project === undefined ? configFileOption(ctx.options) : undefined
+      config: ctx.project === undefined
+        ? configFileOption(ctx.options)
+        : undefined
     })
     stage = 'store'
     const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })

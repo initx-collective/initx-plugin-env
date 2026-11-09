@@ -103,13 +103,23 @@ export async function createHarness() {
       // Delete only the absolute directory returned by mkdtemp, never its parent.
       if (dirname(directory) !== resolve(tmpdir()) || !directory.startsWith(join(resolve(tmpdir()), 'initx-env-run-')))
         throw new Error('Unsafe test cleanup path')
-      await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+      await rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100
+      })
     }
   }
 }
 
 export function start(command: string, args: string[], options: { env: NodeJS.ProcessEnv, cwd: string }, ipc = false) {
-  const child = spawn(command, args, { ...options, stdio: ipc ? ['pipe', 'pipe', 'pipe', 'ipc'] : 'pipe' })
+  const child = spawn(command, args, {
+    ...options,
+    stdio: ipc
+      ? ['pipe', 'pipe', 'pipe', 'ipc']
+      : 'pipe'
+  })
   let stdout = ''
   let stderr = ''
   child.stdout!.on('data', chunk => stdout += chunk)
@@ -118,7 +128,11 @@ export function start(command: string, args: string[], options: { env: NodeJS.Pr
     child.once('error', reject)
     child.once('close', (code, signal) => resolve({ code, signal, stdout, stderr }))
   })
-  return { child, done, output: () => ({ stdout, stderr }) }
+  return {
+    child,
+    done,
+    output: () => ({ stdout, stderr })
+  }
 }
 
 export async function waitForOutput(running: ReturnType<typeof start>, text: string): Promise<void> {

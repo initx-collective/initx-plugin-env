@@ -57,26 +57,33 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
     format: 'esm',
     banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
     plugins: readOnly
-      ? [{
-          name: 'readonly-fixture',
-          setup(builder) {
-            builder.onLoad({ filter: /storage[/\\]factory\.ts$/ }, () => ({
-              loader: 'ts',
-              contents: `
+      ? [
+          {
+            name: 'readonly-fixture',
+            setup(builder) {
+              builder.onLoad({ filter: /storage[/\\]factory\.ts$/ }, () => ({
+                loader: 'ts',
+                contents: `
             export function createStorageAdapter() {
               return {capabilities:{read:true,list:false,write:false,delete:false,conditionalWrite:false},
                 read:async()=>({version:'opaque-readonly',content:JSON.stringify({schema:1,vars:JSON.parse(process.env.INITX_TEST_VARS)})})};
             }
             export function requireCapability(adapter, operation) { if (!adapter.capabilities[operation]) throw new Error('unsupported'); }
           `
-            }))
+              }))
+            }
           }
-        }]
+        ]
       : []
   })
   if (!harness.env.INITX_TEST_LEGACY) {
-    const apiBaseUrl = type === 'github' ? 'https://api.github.com' : 'https://gitlab.example/api/v4'
-    await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type, apiBaseUrl, repo: 'fake/vault' } }))
+    const apiBaseUrl = type === 'github'
+      ? 'https://api.github.com'
+      : 'https://gitlab.example/api/v4'
+    await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({
+      schema: 1,
+      storage: { type, apiBaseUrl, repo: 'fake/vault' }
+    }))
   }
   harness.env.INITX_TEST_OPTIONS = JSON.stringify(options)
   harness.env.INITX_TEST_ARGS = JSON.stringify(args)
@@ -88,20 +95,53 @@ async function execute(type: 'github' | 'gitlab', options: Record<string, unknow
 
 describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) => {
   it('passes argv, multiline/empty/unexpanded values, cwd and inherited stdin/stdout/stderr to a real child', async () => {
-    const vars = { OVERRIDE: 'store', EMPTY: '', MULTI: '中文\nline\r\n$VAR', QUOTES: '" ; $' }
+    const vars = {
+      OVERRIDE: 'store',
+      EMPTY: '',
+      MULTI: '中文\nline\r\n$VAR',
+      QUOTES: '" ; $'
+    }
     harness.env.INITX_TEST_VARS = JSON.stringify(vars)
     harness.env.OVERRIDE = 'parent'
     harness.env.KEEP_PARENT = 'kept'
-    const tail = ['--config', 'child.json', '--token=child', '--help', '--', '', 'a b', '你好']
-    const script = `let input=''; process.stdin.on('data',x=>input+=x); process.stdin.on('end',()=>{ process.stdout.write(JSON.stringify({argv:process.argv.slice(1),cwd:process.cwd(),vars:Object.fromEntries(${JSON.stringify([...Object.keys(vars), 'KEEP_PARENT'])}.map(k=>[k,process.env[k]])),input})); process.stderr.write('child-stderr-marker'); process.exitCode=23 });`
-    const running = await execute(type, { 'config': '.initx-env.json', '--': [process.execPath, '-e', script, '--', ...tail] })
+    const tail = [
+      '--config',
+      'child.json',
+      '--token=child',
+      '--help',
+      '--',
+      '',
+      'a b',
+      '你好'
+    ]
+    const script = `let input=''; process.stdin.on('data',x=>input+=x); process.stdin.on('end',()=>{ process.stdout.write(JSON.stringify({argv:process.argv.slice(1),cwd:process.cwd(),vars:Object.fromEntries(${JSON.stringify([
+      ...Object.keys(vars),
+      'KEEP_PARENT'
+    ])}.map(k=>[k,process.env[k]])),input})); process.stderr.write('child-stderr-marker'); process.exitCode=23 });`
+    const running = await execute(type, {
+      'config': '.initx-env.json',
+      '--': [
+        process.execPath,
+        '-e',
+        script,
+        '--',
+        ...tail
+      ]
+    })
     running.child.stdin!.end('child-stdin-marker')
     const result = await running.done
     expect(result.code).toBe(23)
-    expect(JSON.parse(result.stdout)).toEqual({ argv: tail, cwd: harness.directory, vars: { ...vars, KEEP_PARENT: 'kept' }, input: 'child-stdin-marker' })
+    expect(JSON.parse(result.stdout)).toEqual({
+      argv: tail,
+      cwd: harness.directory,
+      vars: { ...vars, KEEP_PARENT: 'kept' },
+      input: 'child-stdin-marker'
+    })
     expect(result.stderr).toBe('child-stderr-marker')
     const events = await readFile(harness.env.INITX_TEST_EVENTS!, 'utf8')
-    expect(events).toContain(type === 'github' ? 'api.github.com/repos/fake/vault' : 'gitlab.example/api/v4/projects/fake%2Fvault')
+    expect(events).toContain(type === 'github'
+      ? 'api.github.com/repos/fake/vault'
+      : 'gitlab.example/api/v4/projects/fake%2Fvault')
     expect(events).not.toContain('fake-bootstrap-token')
     expect((await readdir(harness.directory)).filter(name => /^\.env/.test(name))).toEqual([])
     expect(await readFile(harness.env.GITHUB_ENV!, 'utf8')).toBe('unchanged\n')
@@ -110,7 +150,9 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
   it('does not leak fetch error contents or launch the child on a read failure', async () => {
     harness.env.INITX_TEST_VARS = '{}'
     harness.env.INITX_TEST_FETCH_ERROR = '1'
-    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const result = await (await execute(type, {
+      '--': [process.execPath, '-e', 'console.log("should-not-run")']
+    })).done
     expect(result.code).toBe(1)
     expect(stripVTControlCharacters(result.stdout)).toContain('env run: 读取 store失败：网络请求失败或超时')
     expect(result.stdout).not.toContain('后端=')
@@ -120,7 +162,10 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it.each(['debug', 'd'])('prints resolved configuration metadata only with --%s on read failure', async (flag) => {
     harness.env.INITX_TEST_HTTP_STATUS = '403'
-    const result = await (await execute(type, { [flag]: true, '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const result = await (await execute(type, {
+      [flag]: true,
+      '--': [process.execPath, '-e', 'console.log("should-not-run")']
+    })).done
     const output = stripVTControlCharacters(result.stdout)
     expect(result.code).toBe(1)
     expect(output).toContain(` DEBUG  env run: 后端=${type}，profile=default（来自 project-match），凭据来源=INITX_ENV_TOKEN`)
@@ -130,7 +175,9 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it.each([401, 403, 429, 500])('reports HTTP %s without leaking response bodies or starting the child', async (status) => {
     harness.env.INITX_TEST_HTTP_STATUS = String(status)
-    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const result = await (await execute(type, {
+      '--': [process.execPath, '-e', 'console.log("should-not-run")']
+    })).done
     expect(result.code).toBe(1)
     expect(stripVTControlCharacters(result.stdout)).toContain(`HTTP ${status}`)
     expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
@@ -139,7 +186,9 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it('distinguishes a missing store from authentication failure', async () => {
     harness.env.INITX_TEST_MISSING_STORE = '1'
-    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const result = await (await execute(type, {
+      '--': [process.execPath, '-e', 'console.log("should-not-run")']
+    })).done
     expect(result.code).toBe(1)
     expect(result.stdout).toContain('store 文件不存在')
     expect(result.stdout).not.toContain('should-not-run')
@@ -147,13 +196,41 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it.each([
     ['private-token secret-response', 'store 文件不是合法 JSON'],
-    [JSON.stringify({ vars: { 'private-token secret-response': 123 } }), '字段：vars'],
-    [JSON.stringify({ vars: {}, targets: null }), '字段：targets'],
-    [JSON.stringify({ vars: {}, targets: { secrets: [{ repo: 'private-token secret-response' }] } }), '字段：targets.secrets'],
-    [JSON.stringify({ vars: {}, targets: { envFiles: [''] } }), '字段：targets.envFiles']
+    [
+      JSON.stringify({
+        vars: { 'private-token secret-response': 123 }
+      }),
+      '字段：vars'
+    ],
+    [
+      JSON.stringify({ vars: {}, targets: null }),
+      '字段：targets'
+    ],
+    [
+      JSON.stringify({
+        vars: {},
+        targets: {
+          secrets: [
+            { repo: 'private-token secret-response' }
+          ]
+        }
+      }),
+      '字段：targets.secrets'
+    ],
+    [
+      JSON.stringify({
+        vars: {},
+        targets: {
+          envFiles: ['']
+        }
+      }),
+      '字段：targets.envFiles'
+    ]
   ])('reports a controlled store validation hint without private content: %s', async (content, hint) => {
     harness.env.INITX_TEST_RAW_STORE = content
-    const result = await (await execute(type, { '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    const result = await (await execute(type, {
+      '--': [process.execPath, '-e', 'console.log("should-not-run")']
+    })).done
     expect(result.code).toBe(1)
     expect(result.stdout).toContain(hint)
     expect(result.stdout).not.toMatch(/private-token|secret-response|should-not-run|fake-bootstrap-token/)
@@ -162,7 +239,16 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it('accepts the global debug prefix and preserves the child debug argument and exit status', async () => {
     harness.env.INITX_TEST_VARS = '{}'
-    const result = await (await execute(type, { 'debug': true, '--': [process.execPath, '-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1))); process.exitCode=13', '--', '--debug'] })).done
+    const result = await (await execute(type, {
+      'debug': true,
+      '--': [
+        process.execPath,
+        '-e',
+        'process.stdout.write(JSON.stringify(process.argv.slice(1))); process.exitCode=13',
+        '--',
+        '--debug'
+      ]
+    })).done
     expect(result.code).toBe(13)
     expect(result.stdout).toBe('["--debug"]')
     expect(result.stdout + result.stderr).not.toMatch(/fake-bootstrap-token|private-token/)
@@ -170,8 +256,17 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
   it('rejects extra prefix flags and malformed --config before reading', async () => {
     harness.env.INITX_TEST_VARS = '{}'
-    for (const prefix of [{ repo: 'forbidden/repo' }, { config: true }, { config: ['a', 'b'] }]) {
-      const result = await (await execute(type, { ...prefix, '--': [process.execPath, '-e', 'console.log("should-not-run")'] })).done
+    for (const prefix of [
+      { repo: 'forbidden/repo' },
+      { config: true },
+      {
+        config: ['a', 'b']
+      }
+    ]) {
+      const result = await (await execute(type, {
+        ...prefix,
+        '--': [process.execPath, '-e', 'console.log("should-not-run")']
+      })).done
       expect(result.code).toBe(1)
       expect(stripVTControlCharacters(result.stdout)).toContain(' ERROR  env run: 参数失败')
       expect(result.stderr).toBe('')
@@ -182,7 +277,9 @@ describe.each(['github', 'gitlab'] as const)('%s env run integration', (type) =>
 
 it('env run accepts a future read-only adapter without changing process execution', async () => {
   harness.env.INITX_TEST_VARS = JSON.stringify({ FROM_READONLY: 'yes' })
-  const result = await (await execute('github', { '--': [process.execPath, '-e', 'process.stdout.write(process.env.FROM_READONLY)'] }, ['demo'], true)).done
+  const result = await (await execute('github', {
+    '--': [process.execPath, '-e', 'process.stdout.write(process.env.FROM_READONLY)']
+  }, ['demo'], true)).done
   expect(result.code).toBe(0)
   expect(result.stdout).toBe('yes')
 })

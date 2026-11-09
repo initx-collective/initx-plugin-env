@@ -13,7 +13,24 @@ import { parseProjectConfig } from './project-config'
 import { migrateLegacyStore } from './store-migrate'
 import { reportCommandError } from './utils/terminal'
 
-const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'profile', 'profiles', 'help']
+const ENV_ACTIONS = [
+  'list',
+  'ls',
+  'pull',
+  'set',
+  'unset',
+  'push',
+  'rm',
+  'remove',
+  'delete',
+  'setup',
+  'apply',
+  'run',
+  'file',
+  'profile',
+  'profiles',
+  'help'
+]
 
 export { defineConfig } from './config'
 export type { EnvProjectConfig } from './project-config'
@@ -60,7 +77,9 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore, EnvProjectCon
       ctx.cliOptions as Record<string, unknown>,
       ctx.optionsList
     )
-    logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info')
+    logger.setLevel(options.boolean('debug') || options.boolean('d')
+      ? 'debug'
+      : 'info')
 
     const store = (ctx.store ?? {}) as EnvPluginStore
     const project = ctx.config === undefined

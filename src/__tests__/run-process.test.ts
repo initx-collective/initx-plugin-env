@@ -21,9 +21,23 @@ afterEach(async () => {
 
 async function host(script: string) {
   const executor = join(harness.directory, 'executor.mjs')
-  await build({ entryPoints: [join(root, 'src/utils/run-process.ts')], outfile: executor, bundle: true, platform: 'node', format: 'esm', banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' } })
+  await build({
+    entryPoints: [
+      join(root, 'src/utils/run-process.ts')
+    ],
+    outfile: executor,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' }
+  })
   harness.env.INITX_TEST_EXECUTOR = pathToFileURL(executor).href
-  const running = start(process.execPath, [join(fixtures, 'process-host.mjs'), process.execPath, '-e', script], { env: harness.env, cwd: harness.directory }, process.platform === 'win32')
+  const running = start(process.execPath, [
+    join(fixtures, 'process-host.mjs'),
+    process.execPath,
+    '-e',
+    script
+  ], { env: harness.env, cwd: harness.directory }, process.platform === 'win32')
   children.push(running)
   return running
 }
@@ -61,7 +75,10 @@ describe('真实进程生命周期及监听器清理', () => {
     }
     const event = JSON.parse((await readFile(harness.env.INITX_TEST_EVENTS!, 'utf8')).trim())
     expect(event.after).toEqual(event.before)
-    expect(event.result).toEqual({ code: signalExitCode(signal), signal })
+    expect(event.result).toEqual({
+      code: signalExitCode(signal),
+      signal
+    })
   }, 15000)
 
   it.runIf(process.platform !== 'win32')('忽略信号的子进程在 5 秒宽限后终止；重复信号不会延长计时', async () => {

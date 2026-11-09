@@ -14,7 +14,9 @@ function readLimit(name: string, fallback: number): number {
   if (!raw)
     return fallback
   const value = Number(raw)
-  return Number.isSafeInteger(value) && value > 0 ? value : fallback
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback
 }
 
 export function maxFileBytes(): number {
@@ -32,7 +34,10 @@ export interface OversizedValue {
 
 export function oversizedValues(vars: Record<string, string>, limit: number): OversizedValue[] {
   return Object.entries(vars)
-    .map(([key, value]) => ({ key, bytes: Buffer.byteLength(value, 'utf8') }))
+    .map(([key, value]) => ({
+      key,
+      bytes: Buffer.byteLength(value, 'utf8')
+    }))
     .filter(item => item.bytes > limit)
 }
 

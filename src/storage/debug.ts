@@ -23,5 +23,7 @@ export function storageDebug(enabled: boolean, diagnostic: Diagnostic): void {
 }
 
 export function accessLevel(value: unknown): number | undefined {
-  return [0, 5, 10, 20, 30, 40, 50].includes(value as number) ? value as number : undefined
+  return [0, 5, 10, 20, 30, 40, 50].includes(value as number)
+    ? value as number
+    : undefined
 }

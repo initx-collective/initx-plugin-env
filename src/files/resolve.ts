@@ -22,7 +22,9 @@ const CONCURRENCY = 4
 
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let next = 0
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+  const workers = Array.from({
+    length: Math.max(1, Math.min(limit, items.length))
+  }, async () => {
     while (next < items.length) {
       const item = items[next]
       next += 1
@@ -61,7 +63,9 @@ export async function resolveStoreVars(
   assertDeclaredRefs(store)
 
   const vars = { ...store.vars }
-  const wanted = options.keys ? new Set(options.keys) : null
+  const wanted = options.keys
+    ? new Set(options.keys)
+    : null
   const refs = collectVarFileRefs(store).filter(ref => !wanted || wanted.has(ref.key))
   const fileKeys = new Set<string>()
 
@@ -81,7 +85,9 @@ export async function resolveStoreVars(
 
   const values = new Map<string, string>()
 
-  await mapLimit([...byId.keys()], CONCURRENCY, async (id) => {
+  await mapLimit([
+    ...byId.keys()
+  ], CONCURRENCY, async (id) => {
     const current = byId.get(id)!
     const file = await readVerifiedFile(client, basePath, name, id, current.entry, { maxBytes })
     values.set(id, decodeValue(current.entry, file.bytes, id))

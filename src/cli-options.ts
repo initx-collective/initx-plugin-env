@@ -21,14 +21,20 @@ function pick(raw: Record<string, unknown>, name: string): unknown {
 }
 
 function normalize(value: unknown): string | undefined {
-  if (typeof value === 'string')
-    return value === '' ? undefined : value
+  if (typeof value === 'string') {
+    return value === ''
+      ? undefined
+      : value
+  }
 
   if (typeof value === 'number')
     return String(value)
 
-  if (Array.isArray(value))
-    return value.length ? value.map(String).join(',') : undefined
+  if (Array.isArray(value)) {
+    return value.length
+      ? value.map(String).join(',')
+      : undefined
+  }
 
   return undefined
 }

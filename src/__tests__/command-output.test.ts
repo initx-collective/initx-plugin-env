@@ -15,7 +15,10 @@ beforeEach(async () => {
   delete harness.env.FORCE_COLOR
   delete harness.env.NO_COLOR
   harness.env.INITX_TEST_HTTP_STATUS = '403'
-  await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'fake/vault' } }))
+  await writeFile(join(harness.directory, '.initx-env.json'), JSON.stringify({
+    schema: 1,
+    storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.example/api/v4', repo: 'fake/vault' }
+  }))
   await writeFile(join(harness.directory, '.env'), 'A=dummy-local-value\n')
   host = join(harness.directory, 'minified-plugin-host.mjs')
   await build({
@@ -59,8 +62,17 @@ async function execute(args: string[], options: Record<string, unknown> = {}) {
 }
 
 describe('plugin command error boundary in a minified subprocess', () => {
-  it.each(['list', 'pull', 'set', 'push', 'apply', 'profile status'])('%s reports only the error message and exits nonzero', async (action) => {
-    const result = await execute(action === 'set' ? ['set', 'demo', 'A=dummy-local-value'] : action.split(' ').concat('demo'), { targetToken: 'fake-target-token' })
+  it.each([
+    'list',
+    'pull',
+    'set',
+    'push',
+    'apply',
+    'profile status'
+  ])('%s reports only the error message and exits nonzero', async (action) => {
+    const result = await execute(action === 'set'
+      ? ['set', 'demo', 'A=dummy-local-value']
+      : action.split(' ').concat('demo'), { targetToken: 'fake-target-token' })
     expect(result.code).toBe(1)
     expect(stripVTControlCharacters(result.stdout)).toContain(' ERROR  没有权限，请检查 token 授权与分支保护（HTTP 403）\n')
     expect(result.stderr).toBe('')
@@ -111,7 +123,12 @@ describe('plugin command error boundary in a minified subprocess', () => {
   it('uses green for added keys and yellow for changed keys without printing values', async () => {
     harness.env.FORCE_COLOR = '1'
     harness.env.INITX_TEST_HTTP_STATUS = '200'
-    const result = await execute(['set', 'demo', 'A=dummy-local-value', 'B=dummy-added-value'])
+    const result = await execute([
+      'set',
+      'demo',
+      'A=dummy-local-value',
+      'B=dummy-added-value'
+    ])
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('\x1B[32m  + B\x1B[0m')
     expect(result.stdout).toContain('\x1B[33m  ~ A\x1B[0m')

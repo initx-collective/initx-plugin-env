@@ -14,7 +14,9 @@ export function colorText(text: string, tone: Tone, stream: 'stdout' | 'stderr' 
 
 /** Catch at the plugin boundary so Node never prints the minified source or stack. */
 export function reportCommandError(error: unknown): void {
-  const message = error instanceof Error && error.message ? error.message : '命令执行失败'
+  const message = error instanceof Error && error.message
+    ? error.message
+    : '命令执行失败'
   logger.error(colorText(message, 'red'))
   process.exitCode = 1
 }

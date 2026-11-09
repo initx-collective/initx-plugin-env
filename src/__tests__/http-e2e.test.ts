@@ -11,8 +11,19 @@ import { createCliOptions } from '../cli-options'
 import { handleEnv } from '../commands/env'
 import { handleEnvFile } from '../commands/env-file'
 
-const { logger } = vi.hoisted(() => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn() } }))
-vi.mock('@initx-plugin/utils', async importOriginal => ({ ...await importOriginal<typeof import('@initx-plugin/utils')>(), logger, inquirer: {} }))
+const { logger } = vi.hoisted(() => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn()
+  }
+}))
+vi.mock('@initx-plugin/utils', async importOriginal => ({
+  ...await importOriginal<typeof import('@initx-plugin/utils')>(),
+  logger,
+  inquirer: {}
+}))
 
 interface Store {
   schema: number
@@ -31,11 +42,19 @@ function json(response: import('node:http').ServerResponse, status: number, body
   response.statusCode = status
   if (body !== undefined)
     response.setHeader('content-type', 'application/json')
-  response.end(body === undefined ? undefined : JSON.stringify(body))
+  response.end(body === undefined
+    ? undefined
+    : JSON.stringify(body))
 }
 
 function fileBody(content: Buffer, sha: string) {
-  return { type: 'file', sha, encoding: 'base64', content: content.toString('base64'), size: content.byteLength }
+  return {
+    type: 'file',
+    sha,
+    encoding: 'base64',
+    content: content.toString('base64'),
+    size: content.byteLength
+  }
 }
 
 async function readBody(request: import('node:http').IncomingMessage): Promise<Record<string, unknown>> {
@@ -73,7 +92,9 @@ function startServer(): Promise<string> {
         return
       }
       if (path === filePrefix.slice(0, -1)) {
-        json(response, 200, [...files.keys()].map(name => ({ name, path: `${filePrefix}${name}`, type: 'file' })))
+        json(response, 200, [
+          ...files.keys()
+        ].map(name => ({ name, path: `${filePrefix}${name}`, type: 'file' })))
         return
       }
       if (path.startsWith(filePrefix)) {
@@ -95,12 +116,16 @@ function startServer(): Promise<string> {
       version += 1
       if (path === storePath) {
         store = JSON.parse(content.toString('utf8')) as Store
-        json(response, 200, { content: { sha: `store-${version}` } })
+        json(response, 200, {
+          content: { sha: `store-${version}` }
+        })
         return
       }
       if (path.startsWith(filePrefix)) {
         files.set(path.slice(filePrefix.length), content)
-        json(response, 200, { content: { sha: `file-${version}` } })
+        json(response, 200, {
+          content: { sha: `file-${version}` }
+        })
         return
       }
     }
@@ -117,7 +142,9 @@ function startServer(): Promise<string> {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
-      resolve(`http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`)
+      resolve(`http://127.0.0.1:${typeof address === 'object' && address
+        ? address.port
+        : 0}`)
     })
   })
 }
@@ -131,7 +158,16 @@ beforeEach(async () => {
   vi.stubEnv('INITX_ENV_TOKEN', 'token')
   // 定位改由项目文件提供：重构后环境变量不再覆盖 vault 位置。
   loopbackBaseUrl = baseUrl
-  await writeFile(join(directory, '.initx-env.json'), JSON.stringify({ schema: 1, storage: { type: 'github', apiBaseUrl: baseUrl, repo: 'fake/vault', branch: 'main', path: 'test-stores' } }))
+  await writeFile(join(directory, '.initx-env.json'), JSON.stringify({
+    schema: 1,
+    storage: {
+      type: 'github',
+      apiBaseUrl: baseUrl,
+      repo: 'fake/vault',
+      branch: 'main',
+      path: 'test-stores'
+    }
+  }))
   vi.stubEnv('GH_TOKEN', '')
   vi.stubEnv('GITHUB_TOKEN', '')
   vi.clearAllMocks()
@@ -148,21 +184,41 @@ afterEach(async () => {
 describe('file refs over a real HTTP loopback', () => {
   it('runs add → pull → check → file pull → push --update-files', async () => {
     /** 插件配置只用 profiles；store 内容由 loopback 回填到外层变量 */
-    const pluginStore = { profiles: { default: { type: 'github' as const, apiBaseUrl: loopbackBaseUrl, repo: 'fake/vault', branch: 'main', path: 'test-stores', token: 'token' } } }
+    const pluginStore = {
+      profiles: {
+        default: {
+          type: 'github' as const,
+          apiBaseUrl: loopbackBaseUrl,
+          repo: 'fake/vault',
+          branch: 'main',
+          path: 'test-stores',
+          token: 'token'
+        }
+      }
+    }
     const pem = '-----BEGIN KEY-----\nABC\n-----END KEY-----\n'
     const source = join(directory, 'key.pem')
     await writeFile(source, pem)
 
-    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, file: source, as: 'key' }) }, ['add', 'demo', 'KEY'])
+    await handleEnvFile({
+      store: pluginStore,
+      options: createCliOptions({ cwd: directory, file: source, as: 'key' })
+    }, ['add', 'demo', 'KEY'])
     expect(store?.vars.KEY).toBe('${file-key}')
     expect(store?.files?.key.bytes).toBe(Buffer.byteLength(pem))
 
     const envPath = join(directory, '.env')
-    await handleEnv({ store: pluginStore, options: createCliOptions({ cwd: directory, to: envPath }) }, ['pull', 'demo'])
+    await handleEnv({
+      store: pluginStore,
+      options: createCliOptions({ cwd: directory, to: envPath })
+    }, ['pull', 'demo'])
     expect(await readFile(envPath, 'utf8')).toBe('KEY="-----BEGIN KEY-----\\nABC\\n-----END KEY-----\\n"\n')
 
     const out = join(directory, 'out')
-    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, toDir: out }) }, ['pull', 'demo'])
+    await handleEnvFile({
+      store: pluginStore,
+      options: createCliOptions({ cwd: directory, toDir: out })
+    }, ['pull', 'demo'])
     expect(await readFile(join(out, 'key'), 'utf8')).toBe(pem)
 
     let captured = ''
@@ -170,13 +226,19 @@ describe('file refs over a real HTTP loopback', () => {
     console.log = (...args) => {
       captured += `${args.join(' ')}\n`
     }
-    await handleEnvFile({ store: pluginStore, options: createCliOptions({ cwd: directory, json: true }) }, ['check', 'demo'])
+    await handleEnvFile({
+      store: pluginStore,
+      options: createCliOptions({ cwd: directory, json: true })
+    }, ['check', 'demo'])
     console.log = originalLog
     expect(JSON.parse(captured).problems).toEqual([])
 
     const changed = join(directory, '.env.changed')
     await writeFile(changed, 'KEY=changed\n')
-    await handleEnv({ store: pluginStore, options: createCliOptions({ cwd: directory, from: changed, updateFiles: true }) }, ['push', 'demo'])
+    await handleEnv({
+      store: pluginStore,
+      options: createCliOptions({ cwd: directory, from: changed, updateFiles: true })
+    }, ['push', 'demo'])
 
     expect(files.get('key')?.toString('utf8')).toBe('changed')
     expect(store?.files?.key.bytes).toBe(7)
