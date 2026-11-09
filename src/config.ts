@@ -1,10 +1,18 @@
 import type { EnvProfile } from './profile'
+import type { EnvProjectConfig, ProjectConfig } from './project-config'
 import type { StorageLocation, StorageType } from './storage/types'
 import process from 'node:process'
 import { matchProfile, sortProfileNames } from './profile'
 import { readProjectConfig } from './project-config'
 import { DEFAULT_API_URLS, normalizeApiBaseUrl } from './storage/path'
 import { migrateLegacyStore } from './store-migrate'
+
+export type { EnvProjectConfig } from './project-config'
+export { parseProjectConfig } from './project-config'
+
+export function defineConfig<T extends EnvProjectConfig>(config: T): T {
+  return config
+}
 
 export const DEFAULT_BRANCH = 'main'
 export const DEFAULT_PATH = 'stores'
@@ -39,6 +47,13 @@ export interface EnvConfigOverrides {
   profile?: string
   token?: string
   config?: string
+  /**
+   * The initx core passes null when it has already checked the plugin's
+   * project config name and found no matching file. This keeps the legacy
+   * resolver API usable for direct callers while preventing a second,
+   * plugin-specific file search during normal plugin execution.
+   */
+  project?: ProjectConfig | null
   cwd?: string
   env?: Record<string, string | undefined>
 }
@@ -146,7 +161,7 @@ function resolveByProject(
       const mark = entry.profile.repo === project.storage.repo ? ' ← repo 匹配' : ''
       return `    ${entry.name}  repo: ${entry.profile.repo || '(空)'}${mark}`
     }).join('\n')}\n`
-    + `  请显式指定：--profile <name>，或调整 .initx-env.json 的 repo`
+    + `  请显式指定：--profile <name>，或调整 initx-env.config.ts 的 repo`
   )
 }
 
@@ -156,7 +171,9 @@ export function resolveConfig(store: EnvPluginStore, overrides: EnvConfigOverrid
   migrateLegacyStore(store)
 
   const explicit = overrides.profile
-  const project = readProjectConfig(overrides.config, overrides.cwd)
+  const project = overrides.project !== undefined
+    ? overrides.project ?? undefined
+    : readProjectConfig(overrides.config, overrides.cwd)
 
   let name: string
   let profileSource: ProfileSource

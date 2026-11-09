@@ -6,7 +6,7 @@ One private repository holds **one directory per store** (`stores/<name>/env.jso
 local `.env`, inject it into a child process or CI job, or write it into GitHub Actions secrets.
 
 ```bash
-initx plugin add env
+pnpm add -D @initx-plugin/env
 ```
 
 The vault is the source of truth. Storage and execution platforms are independent: GitLab CI can
@@ -18,7 +18,7 @@ GitLab CI/CD Variables synchronization is a separate future target, not part of 
 
 ```bash
 npm i -g initx          # optional, otherwise use npx
-initx plugin add env
+pnpm add -D @initx-plugin/env
 
 initx env-config set repo <owner/repo>   # the private repo that holds your stores
 initx env-config set token <pat>         # classic PAT with the `repo` scope is enough
@@ -32,22 +32,31 @@ rather keep it out of a file.
 
 ## Project configuration (GitHub or GitLab)
 
-Commit a non-sensitive `.initx-env.json` in the business project's working directory:
+Install this package in the business project. `initx` discovers installed `@initx-plugin/*` and
+`initx-plugin-*` packages directly, so no `initx plugin add env` step is needed:
 
-```json
-{
-  "schema": 1,
-  "storage": {
-    "type": "gitlab",
-    "apiBaseUrl": "https://gitlab.example.com/api/v4",
-    "repo": "example-group/subgroup/env-vault",
-    "branch": "main",
-    "path": "stores"
-  }
-}
+```bash
+pnpm add -D @initx-plugin/env
 ```
 
-`type` and `repo` are required. GitLab accepts a numeric project ID (a string such as `"12345"`)
+Commit a non-sensitive `initx-env.config.ts` in the business project's working directory:
+
+```ts
+import { defineConfig } from '@initx-plugin/env'
+
+export default defineConfig({
+  schema: 1,
+  storage: {
+    type: 'gitlab',
+    apiBaseUrl: 'https://gitlab.example.com/api/v4',
+    repo: 'example-group/subgroup/env-vault',
+    branch: 'main',
+    path: 'stores'
+  }
+})
+```
+
+`type` and `repo` are required. GitLab accepts a numeric project ID (a string such as `'12345'`)
 or the full namespace, including multiple subgroups. `apiBaseUrl` means the API base, including
 `/api/v4` for GitLab or `/api/v3` for GitHub Enterprise. Defaults are
 `https://gitlab.com/api/v4` and `https://api.github.com`. Branch defaults to `main`, directory to
@@ -63,16 +72,16 @@ to create the first commit; GitLab instance rules for the initial/default branch
 Maintainer even when a Developer can write to other branches.
 
 All storage commands and `env-config status` accept `--config <file>`. Relative paths resolve
-against the caller's cwd. Without the flag, only cwd's `.initx-env.json` is checked; parents are
-never searched. An explicitly missing file, invalid JSON, unknown schema or unknown field fails
-instead of falling back. Project files cannot contain tokens, credentials or `vars`; business
+against the caller's cwd. Without the flag, only cwd's `initx-env.config.ts` is checked; parents
+are never searched. An explicitly missing file, invalid module, unknown schema or unknown field
+fails instead of falling back. Project files cannot contain tokens, credentials or `vars`; business
 values belong to the remote store (whose schema remains 1). Config files are only read.
 
 ```bash
-initx env-config status --config .initx-env.json --offline
-initx env run wukong-content-production --config .initx-env.json -- npm run pipeline
+initx env-config status --config initx-env.config.ts --offline
+initx env run wukong-content-production --config initx-env.config.ts -- npm run pipeline
 # When running from an isolated HOME/cwd, pass the business config's absolute path.
-initx env run demo --config /workspace/business/.initx-env.json -- node /workspace/business/task.mjs
+initx env run demo --config /workspace/business/initx-env.config.ts -- node /workspace/business/task.mjs
 ```
 
 The config's location never changes the child cwd. `npm run pipeline` above is an example business
@@ -277,7 +286,7 @@ implementation is smoke-tested with **initx 0.4.3**; compatible versions must ex
 tail as `ctx.cliOptions['--']: string[]`, keep child flags out of prefix help/version handling, and
 preserve `process.exitCode` after handlers finish. Older versions have not been verified.
 
-Commit `.initx-env.json` as above and set a protected, masked `INITX_ENV_TOKEN` in GitLab. For a
+Commit `initx-env.config.ts` as above and set a protected, masked `INITX_ENV_TOKEN` in GitLab. For a
 GitLab vault, use a Personal/Project Access Token with `read_api` and access to the vault project;
 local writes require `api` plus branch permissions. Check both Files and Tree access on your
 instance. For a GitHub vault, use **Contents: read** access. Runner platform does not select storage.
@@ -285,7 +294,7 @@ instance. For a GitHub vault, use **Contents: read** access. Runner platform doe
 ```yaml
 pipeline:
   script:
-    - initx env run wukong-content-production --config "$CI_PROJECT_DIR/.initx-env.json" -- npm run pipeline
+    - initx env run wukong-content-production --config "$CI_PROJECT_DIR/initx-env.config.ts" -- npm run pipeline
 ```
 
 This illustrates the integration point; prepare pinned initx/plugin versions noninteractively in
@@ -306,7 +315,7 @@ The built-in `GITHUB_TOKEN` can only read **the repository the workflow runs in*
 repo needs its own token (one secret):
 
 ```yaml
-- run: npx --yes initx plugin add env
+- run: npm install --no-save initx @initx-plugin/env
 
 # inject into this job: every later step sees $EXTENSION_ID / $CHROME_REFRESH_TOKEN
 - run: npx --yes initx env setup mail-peon-publish --token "${{ secrets.ENV_VAULT_TOKEN }}"
@@ -330,7 +339,7 @@ are not implicit target credentials for these cross-platform calls. `--dry-run` 
 that independent target credentials are configured, but makes no target API call.
 
 ```bash
-initx env apply demo --config .initx-env.json --repo owner/target --dry-run
+initx env apply demo --config initx-env.config.ts --repo owner/target --dry-run
 # Same invocation without --dry-run writes GitHub Actions secrets.
 # Supply INITX_ENV_TOKEN for the vault and INITX_ENV_TARGET_TOKEN for the target in the environment.
 ```
@@ -473,7 +482,7 @@ store values, raw response bodies or arbitrary exception text. An explicit missi
 file fails during configuration and does not silently fall back to GitHub.
 
 ```powershell
-ix env run acewill-slidev-production --config .initx-env.json --debug -- node -e "console.log('ENV_RUN_OK')"
+ix env run acewill-slidev-production --config initx-env.config.ts --debug -- node -e "console.log('ENV_RUN_OK')"
 ```
 
 Put the debug option before `--`; arguments after `--` belong to the child process.

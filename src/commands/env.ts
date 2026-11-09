@@ -1,5 +1,6 @@
 import type { CliOptions } from '../cli-options'
 import type { EnvPluginStore } from '../config'
+import type { ProjectConfig } from '../project-config'
 import type { StorageAdapter } from '../storage/types'
 import type { StoreRef } from '../store'
 import { readdir } from 'node:fs/promises'
@@ -30,6 +31,7 @@ import { colorText } from '../utils/terminal'
 export interface EnvCommandContext {
   store: EnvPluginStore
   options: CliOptions
+  project?: ProjectConfig | null
 }
 
 /** `.env` / `.env.local` / `.env.production` …（排除备份与模板） */
@@ -73,7 +75,8 @@ export function createClient(ctx: EnvCommandContext) {
   const config = resolveConfig(ctx.store, {
     profile: ctx.options.string('profile') || undefined,
     token: ctx.options.string('token'),
-    config: configFileOption(ctx.options),
+    project: ctx.project,
+    config: ctx.project === undefined ? configFileOption(ctx.options) : undefined,
     cwd: ctx.options.string('cwd')
   })
 

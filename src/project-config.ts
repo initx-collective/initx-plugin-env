@@ -16,6 +16,8 @@ const projectSchema = z.object({
   }).strict()
 }).strict()
 
+export type EnvProjectConfig = z.infer<typeof projectSchema>
+
 export interface ProjectConfig {
   file: string
   storage: Pick<StorageLocation, 'type' | 'apiBaseUrl' | 'repo'> & Partial<Pick<StorageLocation, 'branch' | 'path'>>
@@ -26,6 +28,31 @@ export class ProjectConfigError extends Error {
     super(message)
     this.name = 'ProjectConfigError'
   }
+}
+
+function normalizeProjectConfig(data: EnvProjectConfig, file: string): ProjectConfig {
+  try {
+    const storage = { ...data.storage, apiBaseUrl: normalizeApiBaseUrl(data.storage.apiBaseUrl || DEFAULT_API_URLS[data.storage.type]) }
+    validateStorageRepo(storage.type, storage.repo)
+    if (storage.path !== undefined)
+      assertSafePath(storage.path, true)
+    return { file, storage }
+  }
+  catch {
+    throw new ProjectConfigError('项目 storage 的 API 地址、仓库或路径不合法')
+  }
+}
+
+export function parseProjectConfig(value: unknown, file = '(project config)'): ProjectConfig {
+  let data: EnvProjectConfig
+  try {
+    data = projectSchema.parse(value)
+  }
+  catch {
+    throw new ProjectConfigError('项目配置必须是 schema 1 的合法配置，且只能包含非敏感 storage 定位字段（禁止 token / vars）')
+  }
+
+  return normalizeProjectConfig(data, file)
 }
 
 /** Search only cwd. Explicit missing files and malformed present files never fall back. */
@@ -47,14 +74,6 @@ export function readProjectConfig(file?: string, cwd = process.cwd()): ProjectCo
   catch {
     throw new ProjectConfigError('项目配置必须是 schema 1 的合法 JSON，且只能包含非敏感 storage 定位字段（禁止 token / vars）')
   }
-  try {
-    const storage = { ...data.storage, apiBaseUrl: normalizeApiBaseUrl(data.storage.apiBaseUrl || DEFAULT_API_URLS[data.storage.type]) }
-    validateStorageRepo(storage.type, storage.repo)
-    if (storage.path !== undefined)
-      assertSafePath(storage.path, true)
-    return { file: absolute, storage }
-  }
-  catch {
-    throw new ProjectConfigError('项目 storage 的 API 地址、仓库或路径不合法')
-  }
+
+  return normalizeProjectConfig(data, absolute)
 }

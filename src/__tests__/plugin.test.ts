@@ -32,6 +32,10 @@ describe('插件规则', () => {
   it('defaultStore 为空——唯一真相是 profiles，不预置定位字段', () => {
     expect(plugin.defaultStore).toEqual({})
   })
+
+  it('默认启用 initx-env.config.ts 项目配置', () => {
+    expect(plugin.config).toBe(true)
+  })
 })
 
 describe('createCliOptions', () => {

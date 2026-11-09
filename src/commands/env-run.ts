@@ -93,7 +93,11 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
       throw new Error('--config 需要单个文件路径')
 
     stage = 'config'
-    config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
+    config = resolveConfig(ctx.store, {
+      token: ctx.options.string('token'),
+      project: ctx.project,
+      config: ctx.project === undefined ? configFileOption(ctx.options) : undefined
+    })
     stage = 'store'
     const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
     const ref = await readStore(client, config.path, parsed.name)

@@ -1,5 +1,6 @@
 import type { InitxContext, InitxMatcherRules } from '@initx-plugin/core'
 import type { EnvPluginStore } from './config'
+import type { EnvProjectConfig } from './project-config'
 import { InitxPlugin } from '@initx-plugin/core'
 import { logger } from '@initx-plugin/utils'
 import { createCliOptions } from './cli-options'
@@ -8,12 +9,18 @@ import { handleEnvApply } from './commands/env-apply'
 import { handleEnvFile } from './commands/env-file'
 import { handleProfile } from './commands/env-profile'
 import { handleEnvRun } from './commands/env-run'
+import { parseProjectConfig } from './project-config'
 import { migrateLegacyStore } from './store-migrate'
 import { reportCommandError } from './utils/terminal'
 
 const ENV_ACTIONS = ['list', 'ls', 'pull', 'set', 'unset', 'push', 'rm', 'remove', 'delete', 'setup', 'apply', 'run', 'file', 'profile', 'profiles', 'help']
 
-export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
+export { defineConfig } from './config'
+export type { EnvProjectConfig } from './project-config'
+
+export default class EnvPlugin extends InitxPlugin<EnvPluginStore, EnvProjectConfig> {
+  config = true as const
+
   /**
    * 插件自己的配置。
    *
@@ -33,7 +40,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   ]
 
   async handle(
-    ctx: InitxContext<EnvPluginStore>,
+    ctx: InitxContext<EnvPluginStore, object, EnvProjectConfig>,
     ...args: (string | undefined)[]
   ): Promise<void> {
     try {
@@ -45,7 +52,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
   }
 
   private async dispatch(
-    ctx: InitxContext<EnvPluginStore>,
+    ctx: InitxContext<EnvPluginStore, object, EnvProjectConfig>,
     ...args: (string | undefined)[]
   ): Promise<void> {
     const rest = args.filter((arg): arg is string => typeof arg === 'string')
@@ -56,6 +63,9 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
     logger.setLevel(options.boolean('debug') || options.boolean('d') ? 'debug' : 'info')
 
     const store = (ctx.store ?? {}) as EnvPluginStore
+    const project = ctx.config === undefined
+      ? null
+      : parseProjectConfig(ctx.config, ctx.configSource)
 
     // 迁移在任何命令之前，且只会在旧配置存在时动一次。
     const migration = migrateLegacyStore(store)
@@ -67,7 +77,7 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
 
     // Help 只认前缀参数，不认 `--` 之后的透传。
     if (rest[0] === 'run' && !options.boolean('help') && !options.boolean('h')) {
-      await handleEnvRun({ store, options }, rest.slice(1))
+      await handleEnvRun({ store, options, project }, rest.slice(1))
       return
     }
 
@@ -83,27 +93,27 @@ export default class EnvPlugin extends InitxPlugin<EnvPluginStore> {
       if (!sub || sub === 'help')
         printProfileHelp()
       else
-        await handleProfile({ store, options }, sub, profileArgs)
+        await handleProfile({ store, options, project }, sub, profileArgs)
       return
     }
 
     // 顶层别名：`env profiles` 直接列出本机 profile，省掉一层 `profile`。
     if (action === 'profiles') {
-      await handleProfile({ store, options }, 'profiles', params)
+      await handleProfile({ store, options, project }, 'profiles', params)
       return
     }
 
     if (action === 'apply') {
-      await handleEnvApply({ store, options }, params)
+      await handleEnvApply({ store, options, project }, params)
       return
     }
 
     if (action === 'file') {
-      await handleEnvFile({ store, options }, params)
+      await handleEnvFile({ store, options, project }, params)
       return
     }
 
-    await handleEnv({ store, options }, [action, ...params])
+    await handleEnv({ store, options, project }, [action, ...params])
   }
 }
 
@@ -143,7 +153,7 @@ profile 管理：
   profile status [--offline]  显示当前项目实际生效的 profile 与连通性
 
 任何一个命令都可以加 --profile <名字> 临时指定另一套 vault。
-项目里的 .initx-env.json 只写 type/apiBaseUrl/repo 等定位字段，
+项目里的 initx-env.config.ts 只写 type/apiBaseUrl/repo 等定位字段，
 插件会据此自动挑选匹配的 profile 并取用它的 token。
 
 示例：
@@ -169,9 +179,9 @@ function printProfileHelp(): void {
 env profiles 是 env profile profiles 的简写，两者等价。
 
 profile 是一套自包含的 vault 连接：type / apiBaseUrl / repo / branch / path / token。
-本机可以有多套，项目通过 .initx-env.json 的定位字段自动匹配。
+本机可以有多套，项目通过 initx-env.config.ts 的定位字段自动匹配。
 
-CI 等无人值守环境不需要在本机建 profile：.initx-env.json 里写全 storage 即可，
+CI 等无人值守环境不需要在本机建 profile：initx-env.config.ts 里写全 storage 即可，
 token 由 INITX_ENV_TOKEN 提供，此时生效的名字显示为 (project)。
 `)
 }

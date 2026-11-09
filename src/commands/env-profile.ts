@@ -1,6 +1,7 @@
 import type { CliOptions } from '../cli-options'
 import type { EnvPluginStore } from '../config'
 import type { EnvProfile } from '../profile'
+import type { ProjectConfig } from '../project-config'
 import process from 'node:process'
 import { inquirer, logger } from '@initx-plugin/utils'
 import { DEFAULT_BRANCH, DEFAULT_PATH, defaultApiBaseUrl, normalizeProfile, profileNames, requireProfile, resolveConfig } from '../config'
@@ -23,6 +24,7 @@ const TOKEN_WARNING = 'token 会以**明文**存在 ~/.initx/stores/@initx-plugi
 export interface ProfileContext {
   store: EnvPluginStore
   options: CliOptions
+  project?: ProjectConfig | null
 }
 
 export async function handleProfile(ctx: ProfileContext, action: string, args: string[]): Promise<void> {
@@ -127,7 +129,7 @@ async function requireTTY(command: string): Promise<void> {
   if (!process.stdin.isTTY) {
     throw new Error(
       `${command} 需要交互式终端。\n`
-      + '  CI / 脚本里请改用 INITX_ENV_TOKEN 提供 token，仓库定位写在项目 .initx-env.json'
+      + '  CI / 脚本里请改用 INITX_ENV_TOKEN 提供 token，仓库定位写在项目 initx-env.config.ts'
     )
   }
 }
@@ -275,7 +277,10 @@ async function runProfiles(ctx: ProfileContext): Promise<void> {
  */
 function currentProfileName(ctx: ProfileContext): string | undefined {
   try {
-    return resolveConfig(ctx.store, { profile: ctx.options.string('profile') || undefined }).profile
+    return resolveConfig(ctx.store, {
+      profile: ctx.options.string('profile') || undefined,
+      project: ctx.project
+    }).profile
   }
   catch {
     return ctx.store.defaultProfile
@@ -334,7 +339,10 @@ async function pickProfile(store: EnvPluginStore, message: string): Promise<stri
 /** `status` 借用：打印当前实际生效的配置与来源。 */
 export async function printStatus(ctx: ProfileContext): Promise<void> {
   const { resolveConfig } = await import('../config')
-  const config = resolveConfig(ctx.store, { profile: ctx.options.string('profile') || undefined })
+  const config = resolveConfig(ctx.store, {
+    profile: ctx.options.string('profile') || undefined,
+    project: ctx.project
+  })
 
   logger.info(`profile: ${colorText(config.profile, 'blue')}（来自 ${config.profileSource}）`)
   logger.info(`存储后端: ${colorText(config.type, 'blue')}`)

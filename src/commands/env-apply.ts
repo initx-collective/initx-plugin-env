@@ -1,5 +1,6 @@
 import type { CliOptions } from '../cli-options'
 import type { EnvPluginStore } from '../config'
+import type { ProjectConfig } from '../project-config'
 import { Buffer } from 'node:buffer'
 import { logger } from '@initx-plugin/utils'
 import { configFileOption } from '../cli-options'
@@ -27,6 +28,7 @@ import { colorText } from '../utils/terminal'
 export interface ApplyContext {
   store: EnvPluginStore
   options: CliOptions
+  project?: ProjectConfig | null
 }
 
 const MAX_SECRET_BYTES = 48 * 1024
@@ -42,7 +44,11 @@ export async function handleEnvApply(ctx: ApplyContext, args: string[]): Promise
 
   // 注意：这里的 `--repo` 是**写入目标**仓库，不是 vault 仓库，
   // 所以不把它传给 resolveConfig。
-  const config = resolveConfig(ctx.store, { token: ctx.options.string('token'), config: configFileOption(ctx.options) })
+  const config = resolveConfig(ctx.store, {
+    token: ctx.options.string('token'),
+    project: ctx.project,
+    config: ctx.project === undefined ? configFileOption(ctx.options) : undefined
+  })
   const client = createStorageAdapter({ ...config, debug: ctx.options.boolean('debug') || ctx.options.boolean('d') })
   const destination = createGitHubActionsTarget(config, ctx.options.string('target-token'))
   const ref = await readStore(client, config.path, name)
