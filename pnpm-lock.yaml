@@ -180,11 +180,11 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0(@typescript-eslint/typescript-estree@8.72.1(typescript@6.0.3))(@typescript-eslint/utils@8.72.1(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3))(@vue/compiler-sfc@3.5.45)(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3)(vitest@5.1.0(@types/node@26.6.6)(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@initx-plugin/core':
-        specifier: ^0.4.3
-        version: 0.4.3(@types/node@26.6.6)
+        specifier: ^0.4.4
+        version: 0.4.4(@types/node@26.6.6)
       '@initx-plugin/utils':
-        specifier: ^0.4.3
-        version: 0.4.3(@types/node@26.6.6)
+        specifier: ^0.4.4
+        version: 0.4.4(@types/node@26.6.6)
       '@types/cross-spawn':
         specifier: ^6.0.6
         version: 6.0.6
@@ -758,11 +758,11 @@ packages:
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
 
-  '@initx-plugin/core@0.4.3':
-    resolution: {integrity: sha512-AW354sx7SaWQMmeRIljy8i066jAPD5PdJVWjOG3FjjOCk8Kmoz+5hTIHtpgv6jyVTEVe3P0rUNw3BdMNUiimvA==}
+  '@initx-plugin/core@0.4.4':
+    resolution: {integrity: sha512-ie1bmh1wadazvwEGrZ8E8TGud5f8Hr1No/p6ekm/i3BYbgAdvkhqwnvvKWgysGXeBY5np7hzcAma7N39nNLZGA==}
 
-  '@initx-plugin/utils@0.4.3':
-    resolution: {integrity: sha512-H801sxyysudDlr7d7EV7/t5n2e1b6Jklva/UeetjZBGgbUZZNluSTKTb3l38uPm+tGvfA76R+eUvP2uaMXWLrg==}
+  '@initx-plugin/utils@0.4.4':
+    resolution: {integrity: sha512-G0OmuGh25qp6A/Fom59XNiLt4LmPkGptSmLq1yfTTYPz710KllUsZZ7VPLNUVIsfrOLMYKapg8aJjUr37r9lqA==}
 
   '@inquirer/ansi@2.0.10':
     resolution: {integrity: sha512-dwrc+1aqVZpHNkNDswXGtn1typ+Pxpo5FHZRyBw1le7onEJUkPUkYOY1FIFC1LvFMYUqqLuWBwElhAmencL7MQ==}
@@ -2063,6 +2063,10 @@ packages:
   indent-string@5.0.0:
     resolution: {integrity: sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg==}
     engines: {node: '>=12'}
+
+  ini@5.0.0:
+    resolution: {integrity: sha512-+N0ngpO3e7cRUWOJAS7qw0IZIVc6XPrW4MlFBdD066F2L4k1L6ker3hLqSq7iXxU5tgS4WGkIUElWn5vogAEnw==}
+    engines: {node: ^18.17.0 || >=20.5.0}
 
   is-builtin-module@5.0.0:
     resolution: {integrity: sha512-f4RqJKBUe5rQkJ2eJEJBXSticB3hGbN9j0yxxMQFqIW89Jp9WYFtzfTcRlstDKVUTRzSOTLKRfO9vIztenwtxA==}
@@ -3498,18 +3502,22 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@initx-plugin/core@0.4.3(@types/node@26.6.6)':
+  '@initx-plugin/core@0.4.4(@types/node@26.6.6)':
     dependencies:
-      '@initx-plugin/utils': 0.4.3(@types/node@26.6.6)
+      '@initx-plugin/utils': 0.4.4(@types/node@26.6.6)
       defu: 6.1.7
+      importx: 0.5.2
+      ini: 5.0.0
       matchinitx: 0.0.4
       npm-plugin-kit: 0.6.3
       pathe: 2.0.3
+      unconfig: 7.5.0
+      yaml: 2.9.1
     transitivePeerDependencies:
       - '@types/node'
       - supports-color
 
-  '@initx-plugin/utils@0.4.3(@types/node@26.6.6)':
+  '@initx-plugin/utils@0.4.4(@types/node@26.6.6)':
     dependencies:
       '@inquirer/prompts': 8.7.5(@types/node@26.6.6)
       picospinner: 3.1.2
@@ -4802,6 +4810,8 @@ snapshots:
   imurmurhash@0.1.4: {}
 
   indent-string@5.0.0: {}
+
+  ini@5.0.0: {}
 
   is-builtin-module@5.0.0:
     dependencies:

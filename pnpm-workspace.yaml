@@ -1,4 +1,8 @@
 minimumReleaseAgeExcludePrune: true
+minimumReleaseAgeExclude:
+  - '@initx-plugin/core'
+  - '@initx-plugin/utils'
+
 trustPolicy: no-downgrade
 shellEmulator: true
 
