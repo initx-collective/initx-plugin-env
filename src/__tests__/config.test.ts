@@ -136,7 +136,7 @@ describe('项目文件自身充当 profile（CI 无人值守）', () => {
     })
 
     expect(config).toMatchObject({
-      profile: '(project)',
+      profile: 'default',
       profileSource: 'project-match',
       type: 'gitlab',
       repo: 'imba97/env',
@@ -155,15 +155,20 @@ describe('项目文件自身充当 profile（CI 无人值守）', () => {
       .toThrow(/token/)
   })
 
-  it('本机已有同后端 profile 时仍优先用它，不被项目虚拟 profile 顶替', () => {
+  it('本机已有同后端 profile 时项目配置仍优先，profile 只提供 token', () => {
     const { file } = writeProject({
       schema: 1,
-      storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.acewill.cn/api/v4', repo: 'imba97/env' }
+      storage: { type: 'gitlab', apiBaseUrl: 'https://gitlab.acewill.cn/api/v4', repo: 'imba97/other' }
     })
 
     const config = resolveConfig(store(), { config: file, env: {} })
 
-    expect(config).toMatchObject({ profile: 'acewill', profileSource: 'project-match' })
+    expect(config).toMatchObject({
+      profile: 'acewill',
+      profileSource: 'project-match',
+      repo: 'imba97/other',
+      token: 'gl-token'
+    })
   })
 })
 

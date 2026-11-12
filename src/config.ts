@@ -18,11 +18,13 @@ export const DEFAULT_BRANCH = 'main'
 export const DEFAULT_PATH = 'stores'
 
 /**
- * 项目文件直接充当 profile 时使用的虚拟名字。
+ * 项目文件直接充当 profile 时使用的名字。
  *
+ * 本机没有可用 profile 时，项目配置本身已完整描述 vault，
+ * 这里统一按 default 显示，与本地默认 profile 的名字保持一致。
  * 只出现在展示与调试信息里，不写回 store，也不会被 `ix env use` 选中。
  */
-export const PROJECT_PROFILE_NAME = '(project)'
+export const PROJECT_PROFILE_NAME = 'default'
 
 /**
  * 插件本地配置：只有 profiles 一份真相，外加"默认用哪个"。
@@ -120,6 +122,26 @@ function resolveByProject(
 ): { name: string, profile: EnvProfile } {
   const profiles = store.profiles ?? {}
   const result = matchProfile(profiles, project.storage)
+
+  // The project file names an explicit vault, so it outranks any local profile
+  // that merely shares the same backend. A matched profile still contributes
+  // the token and fields the project left out.
+  if (project.storage.repo) {
+    const base = result.reason === 'matched'
+      ? result.matched
+      : undefined
+    return {
+      name: base?.name ?? PROJECT_PROFILE_NAME,
+      profile: {
+        ...base?.profile,
+        type: project.storage.type,
+        apiBaseUrl: project.storage.apiBaseUrl,
+        repo: project.storage.repo,
+        branch: project.storage.branch ?? base?.profile.branch,
+        path: project.storage.path ?? base?.profile.path
+      }
+    }
+  }
 
   if (result.reason === 'matched' && result.matched)
     return result.matched
