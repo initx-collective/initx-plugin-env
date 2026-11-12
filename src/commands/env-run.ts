@@ -84,6 +84,65 @@ const STAGE_LABELS: Record<RunStage, string> = {
   spawn: '启动子进程'
 }
 
+/**
+ * `env run` 不接受的选项：它们属于其他子命令（pull/push/apply/file/profile）
+ * 或 initx 的其他功能，在这里静默忽略会让使用者以为生效了。
+ *
+ * 用黑名单而不是白名单：initx 以后新增全局选项（`--yes` 就是这样漏掉的）
+ * 时不必跟着改这里，只有本插件新加子命令选项才需要补充。
+ */
+const UNSUPPORTED_OPTIONS = new Set([
+  // 写入类子命令的选项，run 只读不写
+  'from',
+  'to',
+  'to-dir',
+  'file',
+  'force',
+  'keep-files',
+  'keep-blob',
+  'update-files',
+  'inline',
+  'prune',
+  'no-mask',
+  // 输出形态开关，run 直接继承父进程 stdio
+  'json',
+  'stdout',
+  'shell',
+  'cwd',
+  'encoding',
+  'as',
+  'mode',
+  'show',
+  // 选择与过滤，run 只接受一个 store 位置参数
+  'only',
+  'env',
+  'repo',
+  'target-token',
+  'skip-invalid',
+  'offline',
+  'profile',
+  'dry-run'
+])
+
+const camel = (name: string): string => name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+
+/**
+ * 名单预展开成 kebab 与 camel 两种写法：
+ * cac 对 `--dry-run` 会同时产出 `dry-run` 和 `dryRun` 两个键，
+ * 逐个 name 转换只能覆盖一个方向。
+ */
+const UNSUPPORTED_KEYS = new Set(
+  [...UNSUPPORTED_OPTIONS].flatMap(name => [
+    name,
+    camel(name)
+  ])
+)
+
+/** 返回第一个不该出现在 `run` 上的选项名；全部合法时返回 undefined。 */
+export function findUnsupportedOption(raw: Record<string, unknown>): string | undefined {
+  return Object.keys(raw).find(key => UNSUPPORTED_KEYS.has(key))
+}
+
 export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Promise<void> {
   // Report only our own diagnostics. Upstream errors may contain response bodies,
   // token-bearing URLs, store values or the complete command arguments.
@@ -91,9 +150,9 @@ export async function handleEnvRun(ctx: EnvCommandContext, args: string[]): Prom
   let config: ResolvedEnvConfig | undefined
   try {
     const parsed = parseRunArgs(args, ctx.options.raw['--'])
-    const allowed = new Set(['--', 'token', 'config', 'debug', 'd'])
-    if (Object.keys(ctx.options.raw).some(key => !allowed.has(key)))
-      throw new Error('run 只支持 --token / --config 和全局 --debug / -d；子进程参数必须放在 -- 后')
+    const unsupported = findUnsupportedOption(ctx.options.raw)
+    if (unsupported)
+      throw new Error(`run 不支持 --${unsupported}；子进程参数必须放在 -- 后`)
     const token = ctx.options.raw.token
     if (token !== undefined && typeof token !== 'string' && typeof token !== 'number')
       throw new Error('--token 需要单个值')

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { logger } from '@initx-plugin/utils'
 import { describe, expect, it, vi } from 'vitest'
-import { createRunEnv, handleEnvRun, parseRunArgs } from '../commands/env-run'
+import { createRunEnv, findUnsupportedOption, handleEnvRun, parseRunArgs } from '../commands/env-run'
 
 describe('run 参数及环境校验', () => {
   it('保留每个尾部参数，独立校验分隔符和命令', () => {
@@ -161,5 +161,29 @@ describe('run 错误输出', () => {
 
     expect(message).toMatch(/变量名/)
     expect(message).not.toContain('secret-sentinel')
+  })
+})
+
+describe('run 只拦截不适用的选项', () => {
+  it('放行 initx 全局选项，不因其新增而报错', () => {
+    // --yes 是 initx 全局参数，插件不该把它当成非法输入
+    expect(findUnsupportedOption({
+      yes: true,
+      y: true,
+      debug: true,
+      d: true
+    })).toBeUndefined()
+    expect(findUnsupportedOption({
+      'token': 'x',
+      'config': './c.ts',
+      '--': ['pnpm']
+    })).toBeUndefined()
+  })
+
+  it('拦截其他子命令的选项，避免静默失效', () => {
+    expect(findUnsupportedOption({ from: 'prod' })).toBe('from')
+    expect(findUnsupportedOption({ 'dry-run': true })).toBe('dry-run')
+    expect(findUnsupportedOption({ dryRun: true })).toBe('dryRun')
+    expect(findUnsupportedOption({ stdout: true })).toBe('stdout')
   })
 })
