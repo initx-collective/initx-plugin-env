@@ -1,7 +1,7 @@
 {
   "name": "@initx-plugin/env",
   "type": "module",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "packageManager": "pnpm@12.18.0",
   "description": "initx plugin to manage env vars and secrets from private GitHub or GitLab repositories",
   "author": "imba97",
