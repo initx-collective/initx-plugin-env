@@ -79,6 +79,26 @@ describe('gitLab API compatibility', () => {
     expect(new URL(url).searchParams.get('ref')).toBe(config.branch)
   })
 
+  it('reads raw bytes when the JSON endpoint normalizes text line endings', async () => {
+    const raw = Buffer.from('-----BEGIN KEY-----\r\nABC\r\n-----END KEY-----\r\n')
+    const normalized = Buffer.from(raw.toString().replaceAll('\r\n', '\n'))
+    const fetch = vi.fn(async (value) => {
+      const url = new URL(value)
+      if (url.pathname.endsWith('/raw'))
+        return new Response(raw)
+      return Response.json({
+        content: normalized.toString('base64'),
+        encoding: 'base64',
+        last_commit_id: 'commit',
+        size: raw.byteLength
+      })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const result = await createStorageAdapter(config).readBytes('stores/_files/demo/key')
+    expect(Buffer.from(result!.bytes)).toEqual(raw)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it.each([true, false])('paginates all entries without recursive/keyset or following URLs (headers = %s)', async (headers) => {
     const pages: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (value) => {

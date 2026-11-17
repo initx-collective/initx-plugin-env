@@ -206,7 +206,20 @@ export class GitLabStorageAdapter implements StorageAdapter {
       throw new StorageError('validation')
     if (typeof file.size === 'number' && options.maxBytes !== undefined && file.size > options.maxBytes)
       throw new StorageSizeError(options.maxBytes)
-    const bytes = Buffer.from(file.content, 'base64')
+    let bytes = Buffer.from(file.content, 'base64')
+    // GitLab's JSON Files endpoint may normalize text content (for example,
+    // CRLF to LF) while `size` still describes the raw Git blob. If the
+    // lengths differ, fetch the raw endpoint so file references hash bytes,
+    // rather than the transformed JSON representation.
+    if (typeof file.size === 'number' && file.size !== bytes.byteLength) {
+      const rawResponse = await this.request('file-read', `${this.fileUrl(path)}/raw?${new URLSearchParams({ ref: this.location.branch })}`)
+      if (rawResponse.status === 404) {
+        await this.checkTarget()
+        return null
+      }
+      requireOk(rawResponse)
+      bytes = Buffer.from(await rawResponse.arrayBuffer())
+    }
     if (options.maxBytes !== undefined && bytes.byteLength > options.maxBytes)
       throw new StorageSizeError(options.maxBytes)
     return { bytes, version: file.last_commit_id }
